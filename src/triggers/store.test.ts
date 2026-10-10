@@ -96,6 +96,26 @@ describe("organization trigger store", () => {
     );
   });
 
+  it("accepts Pi for unattended runs without an authored mode", async () => {
+    const database = await enrolledDatabase();
+    const store = new OrganizationTriggerStore(
+      database,
+      "org",
+      catalogAgentValidator({ pi: { modes: [] } }),
+    );
+
+    const trigger = await store.save({
+      yaml: triggerYaml(true).replace(
+        "agent: { provider: codex, mode: full-access }",
+        "agent: { provider: pi }",
+      ),
+      userId: null,
+    });
+
+    assert.equal((await store.list()).length, 1);
+    assert.equal((await store.activeRevision(trigger)).version, 1);
+  });
+
   /**
    * `Provider 'omp' cannot preapprove exact MCP tools for unattended execution` is what the
    * daemon says when Hub sends its tool policy to a provider that cannot honour one. Hub sends
@@ -114,7 +134,7 @@ describe("organization trigger store", () => {
         yaml: triggerYaml(true).replace("provider: codex", "provider: omp"),
         userId: null,
       }),
-      /run\.agent\.provider: Provider 'omp' cannot run unattended Hub automations; select Claude, Codex, or OpenCode/u,
+      /run\.agent\.provider: Provider 'omp' cannot run unattended Hub automations; select Claude, Codex, OpenCode, or Pi/u,
     );
   });
 
