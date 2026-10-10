@@ -36,18 +36,29 @@ checks green. Do not describe the checkpoint as fully verified or release-ready.
       the Pi-patched pairing used for deployment.
 - [ ] Finish the complete desktop/mobile browser suite. Passing subsets are not
       a passing full browser suite.
+- [ ] Investigate the latest ordinary `npm test` rerun timeouts. The dashboard
+      follow-up's full run exceeded 600 seconds; a parent rerun exceeded 180
+      seconds during built-server/manual-run integration coverage. The cause is
+      unestablished; the earlier 1,555-test pass is not a current full-suite
+      pass.
 - [ ] Run the required checks in `MAINTAINERS.md` and record the actual results.
 
 ## What is already verified
 
-The ordinary suite passed with 1,555 tests. Native Shortcut workflow integration
-coverage proves signed delivery, story/thread-bound replies, same-agent
-continuation, duplicate suppression, accepted-receipt recovery, and bot
-self-loop protection with external HTTP and agent execution faked at their
-boundaries.
+The implementation checkpoint's ordinary suite passed with 1,555 tests before
+its later dashboard follow-up. Native Shortcut workflow integration coverage
+proves signed delivery, story/thread-bound replies, same-agent continuation,
+duplicate suppression, accepted-receipt recovery, and bot self-loop protection
+with external HTTP and agent execution faked at their boundaries.
 
 Typechecks, lint, formatting, migration checks, builds, and Docker smoke passed.
 Those checks do not replace source-built E2E or authentic live webhook testing.
 
-Implementation commits: `8cbb80f` and browser-fixture follow-up `c179f7b`.
-Public ingress and live Shortcut deployment remain separate, unfinished work.
+Implementation commits: `8cbb80f`, browser-fixture follow-up `c179f7b`, and
+connection-dashboard follow-up `f57e915`. The dashboard follow-up passed 56
+focused tests and 11 desktop connection browser cases, not a completed
+full-suite rerun.
+
+A configured deployment accepted authentic signed Shortcut mentions and produced
+rooted replies and same-agent continuation. Live success does not resolve the
+required E2E failure or substitute for the remaining complete test runs.
