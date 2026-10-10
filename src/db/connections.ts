@@ -13,6 +13,8 @@ import type {
   BindDiscordConnectionInput,
   BindGitHubConnectionInput,
   BindLinearConnectionInput,
+  BindShortcutConnectionInput,
+  ShortcutConnectionRecord,
   BindSlackConnectionInput,
   CompleteLinearProviderApplicationInput,
   CompleteSlackProviderApplicationInput,
@@ -338,6 +340,86 @@ export class ConnectionRepository {
     });
   }
 
+  async bindShortcut(input: BindShortcutConnectionInput): Promise<void> {
+    if (input.phase !== "shortcut_verification") throw new ConnectionAttemptUnavailableError();
+    await this.runtime.transaction(async (runtimeTransaction) => {
+      const transaction = runtimeTransaction.drizzle();
+      await lockAccountSession(transaction, input.access);
+      const attempt = await lockAttempt(transaction, input);
+      await lockStoredAuthority(transaction, attempt);
+      await lockProviderApplication(this.locks, runtimeTransaction, "shortcut");
+      await requireCurrentAttempt(transaction, attempt, input.providerApplicationId);
+      await lockExternal(this.locks, runtimeTransaction, "shortcut", input.workspaceId);
+      const [existing] = await transaction
+        .select({
+          id: schema.shortcutConnections.id,
+          organizationId: schema.shortcutConnections.organizationId,
+        })
+        .from(schema.shortcutConnections)
+        .where(eq(schema.shortcutConnections.workspaceId, input.workspaceId))
+        .for("update");
+      if (existing !== undefined && existing.organizationId !== attempt.organizationId) {
+        throw new ConnectionConflictError();
+      }
+      if (existing === undefined) {
+        await transaction.insert(schema.shortcutConnections).values({
+          organizationId: attempt.organizationId,
+          providerApplicationId: input.providerApplicationId,
+          workspaceId: input.workspaceId,
+          workspaceName: input.workspaceName,
+          slug: await uniqueConnectionSlug(
+            transaction,
+            attempt.organizationId,
+            "shortcut",
+            input.workspaceName,
+          ),
+          botMemberId: input.botMemberId,
+          apiToken: input.apiToken,
+          connectedByUserId: attempt.userId,
+        });
+      } else {
+        await transaction
+          .update(schema.shortcutConnections)
+          .set({
+            providerApplicationId: input.providerApplicationId,
+            workspaceName: input.workspaceName,
+            botMemberId: input.botMemberId,
+            apiToken: input.apiToken,
+            connectedByUserId: attempt.userId,
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(eq(schema.shortcutConnections.id, existing.id));
+      }
+      await consumeLockedAttempt(transaction, attempt.id);
+    });
+  }
+
+  async findShortcut(workspaceId: string): Promise<ShortcutConnectionRecord | undefined> {
+    const [row] = await this.database
+      .select()
+      .from(schema.shortcutConnections)
+      .where(eq(schema.shortcutConnections.workspaceId, workspaceId))
+      .limit(1);
+    return row === undefined ? undefined : shortcutConnection(row);
+  }
+
+  async findShortcutForOrganization(
+    organizationId: string,
+    workspaceId: string,
+  ): Promise<ShortcutConnectionRecord | undefined> {
+    const [row] = await this.database
+      .select()
+      .from(schema.shortcutConnections)
+      .where(
+        and(
+          eq(schema.shortcutConnections.organizationId, organizationId),
+          eq(schema.shortcutConnections.workspaceId, workspaceId),
+        ),
+      )
+      .limit(1);
+    return row === undefined ? undefined : shortcutConnection(row);
+  }
+
   async bindLinear(input: BindLinearConnectionInput): Promise<void> {
     await this.bindLinearTransition(input);
   }
@@ -614,6 +696,26 @@ export class ConnectionRepository {
           provider,
           guildId: connection.guildId,
         } as const;
+      }
+      if (provider === "shortcut") {
+        const [connection] = await transaction
+          .select({ id: schema.shortcutConnections.id })
+          .from(schema.shortcutConnections)
+          .where(
+            and(
+              eq(schema.shortcutConnections.id, connectionId),
+              eq(schema.shortcutConnections.organizationId, access.organizationId),
+            ),
+          )
+          .for("update");
+        if (connection === undefined) throw new ConnectionAccessDeniedError();
+        await transaction
+          .delete(schema.projectTriggerRoutes)
+          .where(eq(schema.projectTriggerRoutes.connectionId, connectionId));
+        await transaction
+          .delete(schema.shortcutConnections)
+          .where(eq(schema.shortcutConnections.id, connectionId));
+        return { provider } as const;
       }
       if (provider === "linear") {
         const [connection] = await transaction
@@ -1054,6 +1156,7 @@ async function consumeLockedAttempt(transaction: HubTransaction, attemptId: stri
 function initialConnectionAttemptPhase(provider: ConnectionProvider): ConnectionAttemptPhase {
   if (provider === "github") return "github_setup";
   if (provider === "discord") return "discord_authorization";
+  if (provider === "shortcut") return "shortcut_verification";
   return provider === "slack" ? "slack_authorization" : "linear_authorization";
 }
 
@@ -1119,6 +1222,21 @@ function slackConnection(row: typeof schema.slackConnections.$inferSelect): Slac
     providerApplicationId: row.providerApplicationId,
   };
 }
+function shortcutConnection(
+  row: typeof schema.shortcutConnections.$inferSelect,
+): ShortcutConnectionRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    slug: row.slug,
+    providerApplicationId: row.providerApplicationId,
+    workspaceId: row.workspaceId,
+    workspaceName: row.workspaceName,
+    botMemberId: row.botMemberId,
+    apiToken: row.apiToken,
+  };
+}
+
 function linearConnection(
   row: typeof schema.linearConnections.$inferSelect,
 ): LinearConnectionRecord {
@@ -1153,6 +1271,8 @@ async function uniqueConnectionSlug(
       select slug from discord_connections where organization_id = ${organizationId}
       union all
       select slug from linear_connections where organization_id = ${organizationId}
+      union all
+      select slug from shortcut_connections where organization_id = ${organizationId}
     ) slugs
     where slug = ${base} or slug like ${`${base}-%`}
     order by slug

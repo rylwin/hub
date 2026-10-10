@@ -27,6 +27,7 @@ describe("project dashboard activity read models", () => {
     });
     database.organizationConnectionUsage = () =>
       Promise.resolve({
+        shortcut: [],
         github: [],
         discord: [],
         slack: [],

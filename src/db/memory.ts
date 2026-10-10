@@ -28,6 +28,8 @@ import type {
   BindDiscordConnectionInput,
   BindGitHubConnectionInput,
   BindLinearConnectionInput,
+  BindShortcutConnectionInput,
+  ShortcutConnectionRecord,
   BindSlackConnectionInput,
   CompleteLinearProviderApplicationInput,
   CompleteSlackProviderApplicationInput,
@@ -42,6 +44,7 @@ import type {
   AcceptDiscordEventInput,
   AcceptGitHubEventInput,
   AcceptLinearEventInput,
+  AcceptShortcutEventInput,
   AcceptSlackEventInput,
   DurableProviderEvent,
   GitHubLifecycleReceiptClaim,
@@ -127,6 +130,7 @@ export interface MemoryDatabaseOptions {
   }[];
   now?: () => Date;
   slackConnections?: readonly SlackConnectionRecord[];
+  shortcutConnections?: readonly ShortcutConnectionRecord[];
 }
 
 function usageKey(organizationId: string, meter: string, periodStart: Date): string {
@@ -220,12 +224,16 @@ class MemoryDatabase implements Database {
   private readonly discordConnections = new Map<string, DiscordConnectionRecord>();
   private readonly slackConnections = new Map<string, SlackConnectionRecord>();
   private readonly linearConnections = new Map<string, LinearConnectionRecord>();
+  private readonly shortcutConnections = new Map<string, ShortcutConnectionRecord>();
   private readonly organizationIds: Set<string>;
 
   constructor(private readonly options: MemoryDatabaseOptions = {}) {
     this.organizationIds = new Set(options.organizationIds);
     for (const connection of options.slackConnections ?? []) {
       this.slackConnections.set(connection.teamId, connection);
+    }
+    for (const connection of options.shortcutConnections ?? []) {
+      this.shortcutConnections.set(connection.workspaceId, connection);
     }
   }
 
@@ -1070,6 +1078,12 @@ class MemoryDatabase implements Database {
       input.teamId,
       reason,
     );
+  }
+
+  async acceptShortcutEvent(input: AcceptShortcutEventInput): Promise<ProviderEventAcceptance> {
+    const binding = await this.findShortcutConnection(input.workspaceId);
+    const reason = input.dropReason ?? (binding === undefined ? "shortcut_unbound" : undefined);
+    return this.acceptMemoryEvent(input, binding?.organizationId, binding?.id, null, reason);
   }
 
   async acceptLinearEvent(input: AcceptLinearEventInput): Promise<ProviderEventAcceptance> {
@@ -2959,6 +2973,9 @@ class MemoryDatabase implements Database {
       slack: Array.from(this.slackConnections.values()).filter(
         (connection) => connection.organizationId === organizationId,
       ),
+      shortcut: Array.from(this.shortcutConnections.values()).filter(
+        (connection) => connection.organizationId === organizationId,
+      ),
       linear: Array.from(this.linearConnections.values()).filter(
         (connection) => connection.organizationId === organizationId,
       ),
@@ -3188,6 +3205,10 @@ class MemoryDatabase implements Database {
     return connectionPersistenceUnavailable();
   }
 
+  bindShortcutConnection(_input: BindShortcutConnectionInput): Promise<void> {
+    return connectionPersistenceUnavailable();
+  }
+
   bindLinearConnection(_input: BindLinearConnectionInput): Promise<void> {
     return connectionPersistenceUnavailable();
   }
@@ -3237,6 +3258,18 @@ class MemoryDatabase implements Database {
     return Promise.resolve(this.slackConnections.get(_teamId));
   }
 
+  findShortcutConnection(workspaceId: string): Promise<ShortcutConnectionRecord | undefined> {
+    return Promise.resolve(this.shortcutConnections.get(workspaceId));
+  }
+
+  findShortcutConnectionForOrganization(
+    organizationId: string,
+    workspaceId: string,
+  ): Promise<ShortcutConnectionRecord | undefined> {
+    const connection = this.shortcutConnections.get(workspaceId);
+    return Promise.resolve(connection?.organizationId === organizationId ? connection : undefined);
+  }
+
   findLinearConnection(_linearOrganizationId: string): Promise<LinearConnectionRecord | undefined> {
     return Promise.resolve(this.linearConnections.get(_linearOrganizationId));
   }
@@ -3282,7 +3315,8 @@ class MemoryDatabase implements Database {
       | AcceptGitHubEventInput
       | AcceptDiscordEventInput
       | AcceptSlackEventInput
-      | AcceptLinearEventInput,
+      | AcceptLinearEventInput
+      | AcceptShortcutEventInput,
     organizationId: string | undefined,
     connectionId: string | undefined,
     resourceId: string | null,
@@ -3478,10 +3512,12 @@ function providerForInput(
     | AcceptGitHubEventInput
     | AcceptDiscordEventInput
     | AcceptSlackEventInput
-    | AcceptLinearEventInput,
-): "github" | "discord" | "slack" | "linear" {
+    | AcceptLinearEventInput
+    | AcceptShortcutEventInput,
+): ConnectionProvider {
   if ("installationId" in input) return "github";
   if ("guildId" in input) return "discord";
+  if ("workspaceId" in input) return "shortcut";
   return "teamId" in input ? "slack" : "linear";
 }
 

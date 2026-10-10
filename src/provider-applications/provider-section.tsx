@@ -459,6 +459,10 @@ function summaryRows(
     if (identity.provider === "discord") {
       rows.push({ label: "Application ID", value: identity.id });
     }
+    if (identity.provider === "shortcut") {
+      rows.push({ label: "Workspace ID", value: identity.id });
+      rows.push({ label: "Bot member ID", value: identity.memberId });
+    }
   }
   if (guide.provider === "slack") {
     rows.push({
@@ -649,7 +653,7 @@ function ConnectAction({
     return null;
   return (
     <Button type="button" disabled={busy} onClick={onConnect}>
-      {pending ? "Opening…" : label}
+      {pending ? (guide.actions.connectPending ?? "Opening…") : label}
     </Button>
   );
 }

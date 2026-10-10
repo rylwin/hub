@@ -43,10 +43,47 @@ export function createProviderApplicationVerifier(
       if (configuration.provider === "discord") {
         return verifyDiscord(configuration, request, timeoutMs);
       }
+      if (configuration.provider === "shortcut") {
+        return verifyShortcut(configuration, request, timeoutMs);
+      }
       // Slack client credentials have no honest verification endpoint. They are verified only
       // by the OAuth installation callback, where the returned bot token is tested.
       return Promise.reject(new ProviderVerificationError("credentialsRejected"));
     },
+  };
+}
+
+async function verifyShortcut(
+  configuration: Extract<ProviderApplicationConfiguration, { provider: "shortcut" }>,
+  request: typeof fetch,
+  timeoutMs: number,
+): Promise<ProviderApplicationIdentity> {
+  const response = await fixedRequest(
+    request,
+    "https://api.app.shortcut.com/api/v3/member",
+    {
+      headers: { "Shortcut-Token": configuration.apiToken },
+      redirect: "error",
+    },
+    timeoutMs,
+  );
+  if (response.status === 401 || response.status === 403) {
+    throw new ProviderVerificationError("credentialsRejected", response.status);
+  }
+  rejectFailedResponse(response);
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+      workspace2: z.object({ id: z.string().uuid(), name: z.string().min(1) }),
+    })
+    .safeParse(await safeJson(response));
+  if (!parsed.success) throw new ProviderVerificationError("invalidResponse", response.status);
+  const member = parsed.data;
+  return {
+    provider: "shortcut",
+    id: member.workspace2.id,
+    name: member.workspace2.name,
+    memberId: member.id,
   };
 }
 

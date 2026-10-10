@@ -46,6 +46,7 @@ export const connectionStatusSchema = z.object({
   discord: discordStatusSchema,
   slack: slackStatusSchema,
   linear: linearStatusSchema,
+  shortcut: linearStatusSchema,
 });
 const scopeSchema = z.object({
   organizationSlug: z.string().min(1),
@@ -157,6 +158,7 @@ const CONNECTION_OPERATIONS = {
   discord: { start: "discordStart", disconnect: "discordDisconnect" },
   slack: { start: "slackStart", disconnect: "slackDisconnect" },
   linear: { start: "linearStart", disconnect: "linearDisconnect" },
+  shortcut: { start: "shortcutStart", disconnect: "shortcutDisconnect" },
 } as const;
 
 function connectionContext(

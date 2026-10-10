@@ -37,6 +37,7 @@ import { Route as AgentExecutionsExecutionIdMcpRouteImport } from './routes/agen
 import { Route as ApiV1CliAuthorizationsPollRouteImport } from './routes/api/v1/cli-authorizations/poll'
 import { Route as ApiIntegrationsSlackEventsRouteImport } from './routes/api/integrations/slack/events'
 import { Route as ApiIntegrationsSlackCallbackRouteImport } from './routes/api/integrations/slack/callback'
+import { Route as ApiIntegrationsShortcutEventsRouteImport } from './routes/api/integrations/shortcut/events'
 import { Route as ApiIntegrationsLinearEventsRouteImport } from './routes/api/integrations/linear/events'
 import { Route as ApiIntegrationsLinearCallbackRouteImport } from './routes/api/integrations/linear/callback'
 import { Route as ApiIntegrationsGithubSetupRouteImport } from './routes/api/integrations/github/setup'
@@ -201,6 +202,12 @@ const ApiIntegrationsSlackCallbackRoute =
     path: '/api/integrations/slack/callback',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiIntegrationsShortcutEventsRoute =
+  ApiIntegrationsShortcutEventsRouteImport.update({
+    id: '/api/integrations/shortcut/events',
+    path: '/api/integrations/shortcut/events',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiIntegrationsLinearEventsRoute =
   ApiIntegrationsLinearEventsRouteImport.update({
     id: '/api/integrations/linear/events',
@@ -353,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/api/integrations/github/setup': typeof ApiIntegrationsGithubSetupRoute
   '/api/integrations/linear/callback': typeof ApiIntegrationsLinearCallbackRoute
   '/api/integrations/linear/events': typeof ApiIntegrationsLinearEventsRoute
+  '/api/integrations/shortcut/events': typeof ApiIntegrationsShortcutEventsRoute
   '/api/integrations/slack/callback': typeof ApiIntegrationsSlackCallbackRoute
   '/api/integrations/slack/events': typeof ApiIntegrationsSlackEventsRoute
   '/api/v1/cli-authorizations/poll': typeof ApiV1CliAuthorizationsPollRoute
@@ -399,6 +407,7 @@ export interface FileRoutesByTo {
   '/api/integrations/github/setup': typeof ApiIntegrationsGithubSetupRoute
   '/api/integrations/linear/callback': typeof ApiIntegrationsLinearCallbackRoute
   '/api/integrations/linear/events': typeof ApiIntegrationsLinearEventsRoute
+  '/api/integrations/shortcut/events': typeof ApiIntegrationsShortcutEventsRoute
   '/api/integrations/slack/callback': typeof ApiIntegrationsSlackCallbackRoute
   '/api/integrations/slack/events': typeof ApiIntegrationsSlackEventsRoute
   '/api/v1/cli-authorizations/poll': typeof ApiV1CliAuthorizationsPollRoute
@@ -449,6 +458,7 @@ export interface FileRoutesById {
   '/api/integrations/github/setup': typeof ApiIntegrationsGithubSetupRoute
   '/api/integrations/linear/callback': typeof ApiIntegrationsLinearCallbackRoute
   '/api/integrations/linear/events': typeof ApiIntegrationsLinearEventsRoute
+  '/api/integrations/shortcut/events': typeof ApiIntegrationsShortcutEventsRoute
   '/api/integrations/slack/callback': typeof ApiIntegrationsSlackCallbackRoute
   '/api/integrations/slack/events': typeof ApiIntegrationsSlackEventsRoute
   '/api/v1/cli-authorizations/poll': typeof ApiV1CliAuthorizationsPollRoute
@@ -499,6 +509,7 @@ export interface FileRouteTypes {
     | '/api/integrations/github/setup'
     | '/api/integrations/linear/callback'
     | '/api/integrations/linear/events'
+    | '/api/integrations/shortcut/events'
     | '/api/integrations/slack/callback'
     | '/api/integrations/slack/events'
     | '/api/v1/cli-authorizations/poll'
@@ -545,6 +556,7 @@ export interface FileRouteTypes {
     | '/api/integrations/github/setup'
     | '/api/integrations/linear/callback'
     | '/api/integrations/linear/events'
+    | '/api/integrations/shortcut/events'
     | '/api/integrations/slack/callback'
     | '/api/integrations/slack/events'
     | '/api/v1/cli-authorizations/poll'
@@ -594,6 +606,7 @@ export interface FileRouteTypes {
     | '/api/integrations/github/setup'
     | '/api/integrations/linear/callback'
     | '/api/integrations/linear/events'
+    | '/api/integrations/shortcut/events'
     | '/api/integrations/slack/callback'
     | '/api/integrations/slack/events'
     | '/api/v1/cli-authorizations/poll'
@@ -632,6 +645,7 @@ export interface RootRouteChildren {
   ApiIntegrationsGithubSetupRoute: typeof ApiIntegrationsGithubSetupRoute
   ApiIntegrationsLinearCallbackRoute: typeof ApiIntegrationsLinearCallbackRoute
   ApiIntegrationsLinearEventsRoute: typeof ApiIntegrationsLinearEventsRoute
+  ApiIntegrationsShortcutEventsRoute: typeof ApiIntegrationsShortcutEventsRoute
   ApiIntegrationsSlackCallbackRoute: typeof ApiIntegrationsSlackCallbackRoute
   ApiIntegrationsSlackEventsRoute: typeof ApiIntegrationsSlackEventsRoute
 }
@@ -832,6 +846,13 @@ declare module '@tanstack/react-router' {
       path: '/api/integrations/slack/callback'
       fullPath: '/api/integrations/slack/callback'
       preLoaderRoute: typeof ApiIntegrationsSlackCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integrations/shortcut/events': {
+      id: '/api/integrations/shortcut/events'
+      path: '/api/integrations/shortcut/events'
+      fullPath: '/api/integrations/shortcut/events'
+      preLoaderRoute: typeof ApiIntegrationsShortcutEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/integrations/linear/events': {
@@ -1091,6 +1112,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIntegrationsGithubSetupRoute: ApiIntegrationsGithubSetupRoute,
   ApiIntegrationsLinearCallbackRoute: ApiIntegrationsLinearCallbackRoute,
   ApiIntegrationsLinearEventsRoute: ApiIntegrationsLinearEventsRoute,
+  ApiIntegrationsShortcutEventsRoute: ApiIntegrationsShortcutEventsRoute,
   ApiIntegrationsSlackCallbackRoute: ApiIntegrationsSlackCallbackRoute,
   ApiIntegrationsSlackEventsRoute: ApiIntegrationsSlackEventsRoute,
 }

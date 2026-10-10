@@ -23,6 +23,8 @@ import {
   type ProviderRuntimeOwner,
 } from "./index.js";
 
+type OAuthProvider = Exclude<Provider, "shortcut">;
+
 const roots: string[] = [];
 
 afterEach(async () => {
@@ -52,7 +54,7 @@ describe("provider application OAuth bind authority", () => {
   );
 });
 
-async function rejectsStoredReplacement(bundle: DatabaseRuntimeBundle, provider: Provider) {
+async function rejectsStoredReplacement(bundle: DatabaseRuntimeBundle, provider: OAuthProvider) {
   const database = createDatabase(bundle.runtime, bundle.locks);
   const store = createProviderApplicationStore(bundle.runtime, bundle.locks, database);
   const first = application(provider, "A");
@@ -94,7 +96,7 @@ async function rejectsStoredReplacement(bundle: DatabaseRuntimeBundle, provider:
   assert.equal(await connectionApplicationId(bundle, provider), replacement.identity.id);
 }
 
-async function serializesReplacementRace(bundle: DatabaseRuntimeBundle, provider: Provider) {
+async function serializesReplacementRace(bundle: DatabaseRuntimeBundle, provider: OAuthProvider) {
   const database = createDatabase(bundle.runtime, bundle.locks);
   const store = createProviderApplicationStore(bundle.runtime, bundle.locks, database);
   const first = application(provider, "RACE-A");
@@ -132,7 +134,7 @@ async function serializesReplacementRace(bundle: DatabaseRuntimeBundle, provider
   }
 }
 
-async function rejectsEnvironmentFallback(bundle: DatabaseRuntimeBundle, provider: Provider) {
+async function rejectsEnvironmentFallback(bundle: DatabaseRuntimeBundle, provider: OAuthProvider) {
   const database = createDatabase(bundle.runtime, bundle.locks);
   const store = createProviderApplicationStore(bundle.runtime, bundle.locks, database);
   const environment = application(provider, "ENV");
@@ -193,7 +195,7 @@ async function rejectsEnvironmentFallback(bundle: DatabaseRuntimeBundle, provide
 async function assertStaleBindRollsBack(
   bundle: DatabaseRuntimeBundle,
   database: Database,
-  provider: Provider,
+  provider: OAuthProvider,
   stateVerifier: string,
   applicationId: string,
 ) {
@@ -234,7 +236,7 @@ async function assertAttemptConsumed(
   );
 }
 
-function callbackPhase(provider: Provider) {
+function callbackPhase(provider: OAuthProvider) {
   if (provider === "github") return "github_user_authorization" as const;
   if (provider === "slack") return "slack_authorization" as const;
   if (provider === "linear") return "linear_authorization" as const;
@@ -243,7 +245,7 @@ function callbackPhase(provider: Provider) {
 
 async function startAttempt(
   database: Database,
-  provider: Provider,
+  provider: OAuthProvider,
   configuration: ProviderApplicationConfiguration,
   configurationVersion: number,
   name: string,
@@ -276,7 +278,7 @@ async function startAttempt(
 
 function bind(
   database: Database,
-  provider: Provider,
+  provider: OAuthProvider,
   stateVerifier: string,
   providerApplicationId: string,
 ): Promise<void> {
@@ -325,7 +327,7 @@ function bind(
 
 async function connectionApplicationId(
   bundle: DatabaseRuntimeBundle,
-  provider: Provider,
+  provider: OAuthProvider,
 ): Promise<string | undefined> {
   const table = `${provider}_connections`;
   return (
@@ -335,7 +337,10 @@ async function connectionApplicationId(
   ).rows[0]?.provider_application_id;
 }
 
-async function resetProvider(bundle: DatabaseRuntimeBundle, provider: Provider): Promise<void> {
+async function resetProvider(
+  bundle: DatabaseRuntimeBundle,
+  provider: OAuthProvider,
+): Promise<void> {
   await bundle.runtime.query(`delete from ${provider}_connections`);
   await bundle.runtime.query(`delete from organization_connection_attempts`);
   await bundle.runtime.query(`delete from runtime_provider_configuration where provider = $1`, [
@@ -363,7 +368,7 @@ async function seedAuthority(bundle: DatabaseRuntimeBundle): Promise<void> {
   );
 }
 
-function application(provider: Provider, suffix: string) {
+function application(provider: OAuthProvider, suffix: string) {
   let configuration: ProviderApplicationConfiguration;
   if (provider === "github") {
     configuration = {
@@ -416,6 +421,14 @@ function identity(configuration: ProviderApplicationConfiguration): ProviderAppl
   }
   if (configuration.provider === "linear") {
     return { provider: "linear", id: configuration.clientId, name: configuration.clientId };
+  }
+  if (configuration.provider === "shortcut") {
+    return {
+      provider: "shortcut",
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "Shortcut workspace",
+      memberId: "00000000-0000-4000-8000-000000000002",
+    };
   }
   return {
     provider: "discord",

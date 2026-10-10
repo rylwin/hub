@@ -8,6 +8,10 @@ import { reportFailure } from "../../failures/index.js";
 import { createDiscordRegistration } from "../../providers/discord/index.js";
 import { createGitHubRegistration } from "../../providers/github/index.js";
 import { createLinearRegistration } from "../../providers/linear/index.js";
+import {
+  createShortcutRegistration,
+  type CreateShortcutRegistrationOptions,
+} from "../../providers/shortcut/index.js";
 import type {
   ProviderRegistration,
   TriggerProviderResources,
@@ -85,13 +89,14 @@ export class DynamicProviderRuntime implements ProviderRuntimeOwner {
     ["slack", emptySlot()],
     ["discord", emptySlot()],
     ["linear", emptySlot()],
+    ["shortcut", emptySlot()],
   ]);
   private readonly stable = new Map<Provider, ProviderRegistration>();
   private slackInstallationHandler: SlackInstallationHandler | undefined;
   private linearInstallationHandler: LinearInstallationHandler | undefined;
 
   constructor(private readonly options: DynamicProviderRuntimeOptions) {
-    for (const provider of ["github", "slack", "discord", "linear"] as const) {
+    for (const provider of ["github", "slack", "discord", "linear", "shortcut"] as const) {
       this.stable.set(provider, this.stableRegistration(provider));
     }
   }
@@ -102,6 +107,7 @@ export class DynamicProviderRuntime implements ProviderRuntimeOwner {
       this.stable.get("discord")!,
       this.stable.get("slack")!,
       this.stable.get("linear")!,
+      this.stable.get("shortcut")!,
     ];
   }
 
@@ -142,6 +148,7 @@ export class DynamicProviderRuntime implements ProviderRuntimeOwner {
       callbackOrigin,
       configurationVersion,
       activation,
+      identity,
     );
     const slot = this.slot(provider);
     const triggerResources = slot.triggerResources;
@@ -210,6 +217,7 @@ export class DynamicProviderRuntime implements ProviderRuntimeOwner {
       expectedConfigurationVersion: number | undefined;
       activateConfiguration: boolean;
     },
+    identity?: ProviderApplicationIdentity,
   ): ProviderRegistration {
     if (this.options.registrationFactory !== undefined) {
       return this.options.registrationFactory(
@@ -264,6 +272,9 @@ export class DynamicProviderRuntime implements ProviderRuntimeOwner {
         activateConfiguration: activation?.activateConfiguration ?? false,
         onVerifiedInstallation: (input) => this.handleLinearInstallation(input),
       });
+    }
+    if (provider === "shortcut") {
+      return configuredShortcutRegistration(shared, configuration, identity);
     }
     throw new Error("provider configuration mismatch");
   }
@@ -634,6 +645,17 @@ function emptySlot(): Slot {
   };
 }
 
+function configuredShortcutRegistration(
+  options: Omit<CreateShortcutRegistrationOptions, "configuration" | "identity">,
+  configuration: ProviderApplicationConfiguration,
+  identity: ProviderApplicationIdentity | undefined,
+): ProviderRegistration {
+  if (configuration.provider !== "shortcut" || identity?.provider !== "shortcut") {
+    throw new Error("provider configuration mismatch");
+  }
+  return createShortcutRegistration({ ...options, configuration, identity });
+}
+
 function actionNames(provider: Provider): readonly string[] {
   if (provider === "github") return ["start", "disconnect", "setup", "callback"];
   return ["start", "disconnect", "callback"];
@@ -643,6 +665,7 @@ function eventNames(provider: Provider): TriggerProvider["eventNames"] {
   if (provider === "slack") return ["slack.mention"];
   if (provider === "discord") return ["discord.mention"];
   if (provider === "linear") return ["linear.issue", "linear.comment"];
+  if (provider === "shortcut") return ["shortcut.comment"];
   return GITHUB_TRIGGER_SOURCE_NAMES;
 }
 

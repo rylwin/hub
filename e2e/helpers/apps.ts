@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
+import { AxeBuilder } from "@axe-core/playwright";
 import { DaemonHandoffSurface } from "./daemon-handoff.js";
 
 export type AppProvider = "GitHub" | "Slack" | "Discord" | "Linear";
@@ -206,16 +206,13 @@ export class AppSection {
   }
 
   async save(): Promise<void> {
-    await this.body()
-      .getByRole("button", {
-        name:
-          this.provider === "Slack"
-            ? /^(?:Connect Slack|Save and continue to Slack)$/u
-            : this.provider === "Linear"
-              ? "Save and continue to Linear"
-              : "Verify and save",
-      })
-      .click();
+    let name: string | RegExp = "Verify and save";
+    if (this.provider === "Slack") {
+      name = /^(?:Connect Slack|Save and continue to Slack)$/u;
+    } else if (this.provider === "Linear") {
+      name = "Save and continue to Linear";
+    }
+    await this.body().getByRole("button", { name }).click();
   }
 
   async chooseSlackTransport(transport: "Socket Mode" | "Webhooks"): Promise<void> {
@@ -441,7 +438,7 @@ export class AppSection {
   }
 
   /** HTTPS exposes every user action needed to create and install the Slack app. */
-  async expectSlackSetupActionable(origin: string): Promise<void> {
+  async expectSlackSetupActionable(_origin: string): Promise<void> {
     await this.expectExpanded();
     await expect(this.body().getByRole("link", { name: "Create a Slack app" })).toBeVisible();
     await expect(this.body().getByRole("list")).toBeVisible();
@@ -490,7 +487,7 @@ export class AppSetupSurface {
     await expect(this.page.getByRole("heading", { name: "Set up your apps" })).toBeVisible();
     await expect(
       this.page.getByText(
-        "Paseo Hub talks to GitHub, Slack, Discord, and Linear through apps you create and own.",
+        "Paseo Hub talks to GitHub, Slack, Discord, Linear, and Shortcut through apps and credentials you own.",
         { exact: false },
       ),
     ).toBeVisible();
@@ -501,7 +498,7 @@ export class AppSetupSurface {
     await expect(this.page.getByRole("heading", { name: "Apps", exact: true })).toBeVisible();
     await expect(
       this.page.getByText(
-        "The GitHub, Slack, Discord, and Linear apps Hub uses to reach your workspaces.",
+        "The GitHub, Slack, Discord, Linear, and Shortcut apps and credentials Hub uses to reach your workspaces.",
       ),
     ).toBeVisible();
   }

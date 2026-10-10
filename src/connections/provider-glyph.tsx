@@ -1,21 +1,22 @@
-import { TerminalIcon, ClockIcon } from "lucide-react";
+import { TerminalIcon, ClockIcon, RouteIcon } from "lucide-react";
 
 /**
  * Brand marks for the connection providers. Lucide dropped brand icons, and a generic
  * message or repository icon reads as "some integration" rather than "Discord" or
- * "GitHub" — a provider card is exactly where the mark carries the meaning. "manual"
- * is not a brand, so it gets a plain lucide glyph instead of a drawn mark.
+ * "GitHub" — a provider card is exactly where the mark carries the meaning. Shortcut
+ * uses a route glyph; "manual" and "schedule" get their own lucide glyphs too.
  */
 export function ProviderGlyph({
   provider,
 }: {
-  provider: "github" | "discord" | "slack" | "linear" | "manual" | "schedule";
+  provider: "github" | "discord" | "slack" | "linear" | "shortcut" | "manual" | "schedule";
 }) {
   if (provider === "schedule") return <ClockIcon className="size-4.5" aria-hidden="true" />;
   if (provider === "github") return <GitHubMark />;
   if (provider === "discord") return <DiscordMark />;
   if (provider === "slack") return <SlackMark />;
   if (provider === "linear") return <LinearMark />;
+  if (provider === "shortcut") return <RouteIcon className="size-4.5" aria-hidden="true" />;
   return <TerminalIcon className="size-4.5" aria-hidden="true" />;
 }
 

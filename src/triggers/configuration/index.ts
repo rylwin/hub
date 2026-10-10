@@ -131,6 +131,7 @@ function automaticReplyType(event: string): string | undefined {
   return provider === "slack" ||
     provider === "discord" ||
     provider === "linear" ||
+    provider === "shortcut" ||
     provider === "github"
     ? `${provider}.reply`
     : undefined;

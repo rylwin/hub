@@ -138,7 +138,7 @@ export function AppSetupEntry({
     <AuthLayout width="xl">
       <PageHeader
         title="Set up your apps"
-        description="Paseo Hub talks to GitHub, Slack, Discord, and Linear through apps you create and own. Set up the ones you want to use."
+        description="Paseo Hub talks to GitHub, Slack, Discord, Linear, and Shortcut through apps and credentials you own. Set up the ones you want to use."
         focusOnMount
       />
       <div className="grid min-w-0 gap-6">
@@ -187,7 +187,7 @@ export function AppsPanel() {
     <>
       <PageHeader
         title="Apps"
-        description="The GitHub, Slack, Discord, and Linear apps Hub uses to reach your workspaces."
+        description="The GitHub, Slack, Discord, Linear, and Shortcut apps and credentials Hub uses to reach your workspaces."
       />
       <ProviderApplications surface="apps" organizationId={account.organization.id} />
     </>

@@ -8,6 +8,7 @@ import type {
   AcceptGitHubEventInput,
   AcceptLinearEventInput,
   AcceptSlackEventInput,
+  AcceptShortcutEventInput,
   GitHubLifecycleReceiptClaim,
   GitHubLifecycleReceiptClaimInput,
   GitHubLifecycleResult,
@@ -45,8 +46,12 @@ export class ProviderEventAcceptanceRepository {
     return this.acceptProvider("linear", input.linearOrganizationId, input.projectId, input);
   }
 
+  acceptShortcut(input: AcceptShortcutEventInput): Promise<ProviderEventAcceptance> {
+    return this.acceptProvider("shortcut", input.workspaceId, undefined, input);
+  }
+
   private async acceptProvider(
-    provider: "github" | "slack" | "discord" | "linear",
+    provider: "github" | "slack" | "discord" | "linear" | "shortcut",
     externalId: number | string,
     resourceId: number | string | undefined,
     input: ProviderEventEvidence,
@@ -436,7 +441,7 @@ function selectFirstRoutePerProject<Route extends { projectId: string }>(
 
 async function findConnection(
   transaction: HubTransaction,
-  provider: "github" | "slack" | "discord" | "linear",
+  provider: "github" | "slack" | "discord" | "linear" | "shortcut",
   externalId: number | string,
 ) {
   if (provider === "github") {
@@ -476,6 +481,17 @@ async function findConnection(
       .limit(1);
     return row;
   }
+  if (provider === "shortcut") {
+    const [row] = await transaction
+      .select({
+        id: schema.shortcutConnections.id,
+        organizationId: schema.shortcutConnections.organizationId,
+      })
+      .from(schema.shortcutConnections)
+      .where(eq(schema.shortcutConnections.workspaceId, String(externalId)))
+      .limit(1);
+    return row;
+  }
   const [row] = await transaction
     .select({
       id: schema.discordConnections.id,
@@ -491,7 +507,7 @@ async function claimProviderReceipt(
   transaction: HubTransaction,
   input: {
     organizationId: string;
-    provider: "github" | "slack" | "discord" | "linear" | "manual";
+    provider: "github" | "slack" | "discord" | "linear" | "shortcut" | "manual";
     connectionId: string | null;
     resourceId: string | null;
     input: ProviderEventEvidence;

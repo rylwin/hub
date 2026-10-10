@@ -134,6 +134,12 @@ export const FIXTURE_APP_IDENTITIES: Readonly<Record<Provider, ProviderApplicati
   discord: { provider: "discord", id: "900", name: "Paseo" },
   slack: { provider: "slack", id: "browser-slack-app", name: "Paseo" },
   linear: { provider: "linear", id: "browser-linear-client", name: "Paseo" },
+  shortcut: {
+    provider: "shortcut",
+    id: "00000000-0000-4000-8000-000000000001",
+    name: "Paseo",
+    memberId: "00000000-0000-4000-8000-000000000002",
+  },
 };
 
 /** The identity an environment-configured provider activates with at boot. */
@@ -209,6 +215,9 @@ export class BrowserProviderApplicationVerifier implements ProviderApplicationVe
             new ProviderVerificationError("credentialsRejected", 401, { subject: "clientSecret" }),
           )
         : Promise.resolve(FIXTURE_APP_IDENTITIES.discord);
+    }
+    if (configuration.provider === "shortcut") {
+      throw new Error("Shortcut fixture not configured");
     }
     // Slack matches production: client credentials have no honest verification endpoint, so the
     // installation callback is the only thing that can accept them.
@@ -299,6 +308,9 @@ export function browserRegistrationFactory(fixtures: BrowserProviderApplicationF
         activateConfiguration: input.activateConfiguration,
         onVerifiedInstallation: input.onVerifiedLinearInstallation,
       });
+    }
+    if (configuration.provider !== "slack") {
+      throw new Error("Shortcut fixture not configured");
     }
     return createSlackRegistration({
       ...shared,

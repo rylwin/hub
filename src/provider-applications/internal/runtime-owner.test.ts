@@ -678,11 +678,22 @@ function providerConfiguration(provider: Provider, id: string): ProviderApplicat
   if (provider === "linear") {
     return { provider, clientId: id, clientSecret: "secret", webhookSecret: "webhook" };
   }
+  if (provider === "shortcut") {
+    return { provider, apiToken: id, webhookSecret: "webhook" };
+  }
   return { provider, applicationId: id, clientSecret: "secret", botToken: "token" };
 }
 
 function providerIdentity(provider: Provider, id: string): ProviderApplicationIdentity {
   if (provider === "github") return { provider, id, name: id, ownerLogin: "owner" };
+  if (provider === "shortcut") {
+    return {
+      provider,
+      id: "00000000-0000-4000-8000-000000000001",
+      name: id,
+      memberId: "00000000-0000-4000-8000-000000000002",
+    };
+  }
   return { provider, id, name: id };
 }
 
@@ -690,6 +701,7 @@ function providerConfigurationId(configuration: ProviderApplicationConfiguration
   if (configuration.provider === "github") return configuration.appId;
   if (configuration.provider === "slack") return configuration.appId;
   if (configuration.provider === "linear") return configuration.clientId;
+  if (configuration.provider === "shortcut") return configuration.apiToken;
   return configuration.applicationId;
 }
 

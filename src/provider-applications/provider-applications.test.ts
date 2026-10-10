@@ -39,6 +39,25 @@ const linearConfiguration: ProviderApplicationConfiguration = {
 };
 
 describe("provider applications", () => {
+  it("projects Shortcut's verified bot identity without exposing its token or webhook secret", async () => {
+    const fixture = createFixture();
+    await fixture.applications.verifyAndSave(request("POST"), "shortcut", {
+      provider: "shortcut",
+      apiToken: "shortcut-private-token",
+      webhookSecret: "shortcut-private-secret",
+    });
+    const overview = await fixture.applications.overview(request());
+    assert.equal(overview.providers.shortcut.status, "verified");
+    assert.deepEqual(overview.providers.shortcut.identity, {
+      provider: "shortcut",
+      id: "shortcut-workspace",
+      name: "Example",
+      memberId: "shortcut-bot",
+    });
+    assert.deepEqual(overview.providers.shortcut.identifiers, {});
+    assert.equal(JSON.stringify(overview).includes("shortcut-private-token"), false);
+    assert.equal(JSON.stringify(overview).includes("shortcut-private-secret"), false);
+  });
   it("reveals no provider state to a signed-in non-operator", async () => {
     const fixture = createFixture({ operator: false });
 
@@ -666,6 +685,8 @@ function identityFor(
   if (provider === "github") return github;
   if (provider === "discord") return { provider, id: "100", name: "Paseo" };
   if (provider === "linear") return { provider, id: "linear-client", name: "Paseo" };
+  if (provider === "shortcut")
+    return { provider, id: "shortcut-workspace", name: "Example", memberId: "shortcut-bot" };
   return { provider, id: "A1", name: "Paseo" };
 }
 
@@ -937,6 +958,7 @@ function candidateConfigurationId(configuration: ProviderApplicationConfiguratio
     return configuration.appId;
   }
   if (configuration.provider === "linear") return configuration.clientId;
+  if (configuration.provider === "shortcut") return configuration.apiToken;
   return configuration.applicationId;
 }
 

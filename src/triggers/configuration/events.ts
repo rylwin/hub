@@ -13,7 +13,7 @@ export interface QualifierDefinition {
 }
 
 interface EventDefinition {
-  provider: "github" | "slack" | "discord" | "linear" | "manual" | "schedule";
+  provider: "github" | "slack" | "discord" | "linear" | "shortcut" | "manual" | "schedule";
   label: string;
   origin: "hub" | "provider";
   qualifiers: readonly QualifierDefinition[];
@@ -61,6 +61,7 @@ const EVENTS = {
   "linear.issue_entered_scope": event("linear", "Linear issue entered scope"),
   "linear.issue_assigned": event("linear", "Linear issue assigned"),
   "linear.comment_created": event("linear", "Linear comment created"),
+  "shortcut.mention": event("shortcut", "Shortcut comment mention"),
   "schedule.tick": event("schedule", "Schedule"),
   "manual.run": event("manual", "Manual run"),
 };

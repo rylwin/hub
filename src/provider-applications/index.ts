@@ -7,7 +7,7 @@ import { TRUSTED_REQUEST_ORIGIN_HEADER } from "../http/request-origin.js";
 import { parseProviderApplicationConfiguration } from "./internal/store.js";
 import { reportFailure } from "../failures/index.js";
 
-export const PROVIDERS = ["github", "slack", "discord", "linear"] as const;
+export const PROVIDERS = ["github", "slack", "discord", "linear", "shortcut"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 export interface GitHubProviderApplicationConfiguration {
@@ -56,17 +56,26 @@ export interface LinearProviderApplicationConfiguration {
   expectedVersion?: number;
 }
 
+export interface ShortcutProviderApplicationConfiguration {
+  provider: "shortcut";
+  apiToken: string;
+  webhookSecret: string;
+  expectedVersion?: number;
+}
+
 export type ProviderApplicationConfiguration =
   | GitHubProviderApplicationConfiguration
   | SlackProviderApplicationConfiguration
   | DiscordProviderApplicationConfiguration
-  | LinearProviderApplicationConfiguration;
+  | LinearProviderApplicationConfiguration
+  | ShortcutProviderApplicationConfiguration;
 
 export type ProviderApplicationIdentity =
   | { provider: "github"; id: string; name: string; ownerLogin: string }
   | { provider: "slack"; id: string; name: string }
   | { provider: "discord"; id: string; name: string }
-  | { provider: "linear"; id: string; name: string };
+  | { provider: "linear"; id: string; name: string }
+  | { provider: "shortcut"; id: string; name: string; memberId: string };
 
 export interface StoredProviderApplication {
   provider: Provider;
@@ -417,16 +426,17 @@ export function createProviderApplications(
           return [provider, view] as const;
         }),
       );
-      const [github, slack, discord, linear] = entries.map(([, view]) => view);
+      const [github, slack, discord, linear, shortcut] = entries.map(([, view]) => view);
       if (
         github === undefined ||
         slack === undefined ||
         discord === undefined ||
-        linear === undefined
+        linear === undefined ||
+        shortcut === undefined
       ) {
         throw new Error("provider overview is incomplete");
       }
-      return { callbackOrigin, providers: { github, slack, discord, linear } };
+      return { callbackOrigin, providers: { github, slack, discord, linear, shortcut } };
     },
 
     async verifyAndSave(request, provider, input, surface) {
@@ -684,6 +694,8 @@ function publicIdentifiers(
       return { applicationId: configuration.applicationId };
     case "linear":
       return { clientId: configuration.clientId };
+    case "shortcut":
+      return {};
   }
   throw new Error("unknown provider configuration");
 }

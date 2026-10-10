@@ -15,7 +15,7 @@ type Tone = "success" | "warning" | "danger" | "neutral";
  * matters — a provider's own words, spelled the way that provider spells them — has a single
  * place to be reviewed.
  *
- * Bold `term` segments are labels the external portal uses verbatim. Do not reword them to match
+ * Emphasized `term` segments are labels the external portal uses verbatim. Do not reword them to match
  * Paseo's vocabulary; the operator is reading them off another company's screen.
  */
 export type StepSegment =
@@ -99,6 +99,7 @@ export interface ProviderGuide {
     save: string;
     savePending: string;
     connect?: string;
+    connectPending?: string;
     connectAgain?: string;
   };
   saveHint?: string;
@@ -658,11 +659,104 @@ export const LINEAR_GUIDE: ProviderGuide = {
   receivesEvents: true,
 };
 
+export const SHORTCUT_GUIDE: ProviderGuide = {
+  provider: "shortcut",
+  name: "Shortcut",
+  summary:
+    "Starts workflows from new story-comment @mentions of your bot and replies in the story thread.",
+  portal: {
+    label: "Open Shortcut API tokens",
+    href: "https://app.shortcut.com/settings/account/api-tokens",
+  },
+  formTitle: "Paste from Shortcut",
+  summaryLabels: { identity: "Configured workspace", connections: "Connections" },
+  environmentVariables: ["SHORTCUT_API_TOKEN", "SHORTCUT_WEBHOOK_SECRET"],
+  groups: [
+    {
+      id: "workspace",
+      steps: [
+        {
+          segments: [
+            {
+              kind: "text",
+              value:
+                "Use a dedicated bot account in the workspace you want Hub to connect. This supports one configured Shortcut token workspace per Hub instance, and the same configured workspace only.",
+            },
+          ],
+        },
+        {
+          segments: [
+            { kind: "text", value: "Sign in as that bot, open " },
+            {
+              kind: "link",
+              value: "Shortcut API tokens",
+              href: "https://app.shortcut.com/settings/account/api-tokens",
+            },
+            { kind: "text", value: ", and create an API token with these scopes:" },
+          ],
+          events: ["Read", "Create Story Comments"],
+        },
+        {
+          segments: [
+            {
+              kind: "text",
+              value:
+                "In the same workspace, configure a webhook for new story comments with a signing secret. Use a public HTTPS webhook ingress for ",
+            },
+            { kind: "term", value: "/api/integrations/shortcut/events" },
+            {
+              kind: "text",
+              value:
+                ". The suggested URL below uses this dashboard's address; replace its origin with your public webhook ingress. You can expose only this webhook route while keeping the dashboard private. Private HTTPS alone is not internet reachable.",
+            },
+          ],
+          urls: ["events"],
+        },
+        {
+          segments: [
+            {
+              kind: "text",
+              value:
+                "Paste the API token and webhook signing secret below. After connecting, new story-comment @mentions of the bot can start workflows; replies are story-thread comments. Story updates and edited comments do not trigger this integration.",
+            },
+          ],
+        },
+      ],
+      fields: [
+        { name: "apiToken", label: "API token", kind: "secret", required: "Enter the API token." },
+        {
+          name: "webhookSecret",
+          label: "Webhook signing secret",
+          kind: "secret",
+          required: "Enter the webhook signing secret.",
+        },
+      ],
+    },
+  ],
+  urls: [{ key: "events", label: "Webhook URL", path: "/api/integrations/shortcut/events" }],
+  savingContinues: false,
+  actions: {
+    save: "Verify and save",
+    savePending: "Verifying…",
+    connect: "Connect configured workspace",
+    connectPending: "Connecting…",
+  },
+  saveHint:
+    "Verification checks the token's workspace and bot identity. Connecting binds that configured workspace directly, with no external OAuth.",
+  verifiedMessage:
+    "Shortcut /member confirmed the workspace and bot identity. This does not prove webhook delivery or write permissions.",
+  requiresHttps: false,
+  httpsRequirement: (origin) =>
+    `Shortcut needs public HTTPS webhook ingress, not a public dashboard. This dashboard can stay at ${origin}.`,
+  receivesEvents: true,
+};
+
 export const PROVIDER_GUIDES: readonly ProviderGuide[] = [
   GITHUB_GUIDE,
   SLACK_GUIDE,
   DISCORD_GUIDE,
   LINEAR_GUIDE,
+  SHORTCUT_GUIDE,
 ];
 
 export function guideFor(provider: Provider): ProviderGuide {

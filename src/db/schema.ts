@@ -32,7 +32,7 @@ export type AgentExecutionStatus = (typeof AGENT_EXECUTION_STATUSES)[number];
 export const PROJECT_STATUSES = ["active", "archived"] as const;
 export const CONFIGURATION_SOURCE_KINDS = ["github", "manual"] as const;
 export const TRIGGER_FORMATS = ["single_run", "legacy_multistep"] as const;
-export const CONNECTION_PROVIDERS = ["github", "slack", "discord", "linear"] as const;
+export const CONNECTION_PROVIDERS = ["github", "slack", "discord", "linear", "shortcut"] as const;
 
 export type MachineSource =
   | { kind: "manual"; userId?: string }
@@ -88,7 +88,7 @@ export const providerEventReceipts = pgTable(
     ),
     check(
       "provider_event_receipts_provider_check",
-      sql`${table.provider} in ('github', 'slack', 'discord', 'linear', 'manual', 'schedule')`,
+      sql`${table.provider} in ('github', 'slack', 'discord', 'linear', 'shortcut', 'manual', 'schedule')`,
     ),
   ],
 );
@@ -256,7 +256,7 @@ export const projectTriggerRoutes = pgTable(
     }).onDelete("cascade"),
     check(
       "project_trigger_routes_provider_check",
-      sql`${table.provider} in ('github', 'slack', 'discord', 'linear')`,
+      sql`${table.provider} in ('github', 'slack', 'discord', 'linear', 'shortcut')`,
     ),
   ],
 );
@@ -861,7 +861,7 @@ export const organizationConnectionAttempts = pgTable(
   "organization_connection_attempts",
   {
     id: uuid().defaultRandom().primaryKey(),
-    provider: text().$type<"github" | "discord" | "slack" | "linear">().notNull(),
+    provider: text().$type<(typeof CONNECTION_PROVIDERS)[number]>().notNull(),
     phase: text()
       .$type<
         | "github_setup"
@@ -869,6 +869,7 @@ export const organizationConnectionAttempts = pgTable(
         | "discord_authorization"
         | "slack_authorization"
         | "linear_authorization"
+        | "shortcut_verification"
       >()
       .notNull(),
     stateVerifier: text("state_verifier").notNull().unique(),
@@ -898,11 +899,11 @@ export const organizationConnectionAttempts = pgTable(
     index("organization_connection_attempts_expiry_idx").on(table.expiresAt),
     check(
       "organization_connection_attempts_provider_check",
-      sql`${table.provider} in ('github', 'discord', 'slack', 'linear')`,
+      sql`${table.provider} in ('github', 'discord', 'slack', 'linear', 'shortcut')`,
     ),
     check(
       "organization_connection_attempts_phase_check",
-      sql`${table.phase} in ('github_setup', 'github_user_authorization', 'discord_authorization', 'slack_authorization', 'linear_authorization')`,
+      sql`${table.phase} in ('github_setup', 'github_user_authorization', 'discord_authorization', 'slack_authorization', 'linear_authorization', 'shortcut_verification')`,
     ),
     check(
       "organization_connection_attempts_shape_check",
@@ -910,7 +911,8 @@ export const organizationConnectionAttempts = pgTable(
         or (${table.phase} = 'github_user_authorization' and ${table.provider} = 'github' and ${table.candidateExternalId} is not null and (${table.pkceVerifier} is not null or ${table.consumedAt} is not null))
         or (${table.phase} = 'discord_authorization' and ${table.provider} = 'discord' and ${table.candidateExternalId} is null and ${table.pkceVerifier} is null)
         or (${table.phase} = 'slack_authorization' and ${table.provider} = 'slack' and ${table.candidateExternalId} is null and ${table.pkceVerifier} is null)
-        or (${table.phase} = 'linear_authorization' and ${table.provider} = 'linear' and ${table.candidateExternalId} is null and ${table.pkceVerifier} is null)`,
+        or (${table.phase} = 'linear_authorization' and ${table.provider} = 'linear' and ${table.candidateExternalId} is null and ${table.pkceVerifier} is null)
+        or (${table.phase} = 'shortcut_verification' and ${table.provider} = 'shortcut' and ${table.candidateExternalId} is null and ${table.pkceVerifier} is null)`,
     ),
   ],
 );
@@ -1061,6 +1063,38 @@ export const linearConnections = pgTable(
     uniqueIndex("linear_connections_organization_external_unique").on(
       table.organizationId,
       table.linearOrganizationId,
+    ),
+  ],
+);
+
+export const shortcutConnections = pgTable(
+  "shortcut_connections",
+  {
+    id: uuid().defaultRandom().primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id").notNull().unique(),
+    providerApplicationId: text("provider_application_id"),
+    slug: text().notNull(),
+    workspaceName: text("workspace_name").notNull(),
+    botMemberId: text("bot_member_id").notNull(),
+    apiToken: text("api_token").notNull(),
+    connectedByUserId: text("connected_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("shortcut_connections_id_organization_unique").on(table.id, table.organizationId),
+    uniqueIndex("shortcut_connections_organization_slug_unique").on(
+      table.organizationId,
+      table.slug,
+    ),
+    uniqueIndex("shortcut_connections_organization_external_unique").on(
+      table.organizationId,
+      table.workspaceId,
     ),
   ],
 );
@@ -1258,7 +1292,7 @@ export const runtimeProviderConfiguration = pgTable(
   (table) => [
     check(
       "runtime_provider_configuration_provider_check",
-      sql`${table.provider} in ('github', 'slack', 'discord', 'linear')`,
+      sql`${table.provider} in ('github', 'slack', 'discord', 'linear', 'shortcut')`,
     ),
     check("runtime_provider_configuration_version_check", sql`${table.version} > 0`),
   ],
@@ -1275,7 +1309,7 @@ export const runtimeProviderActivations = pgTable(
   (table) => [
     check(
       "runtime_provider_activation_provider_check",
-      sql`${table.provider} in ('github', 'slack', 'discord', 'linear')`,
+      sql`${table.provider} in ('github', 'slack', 'discord', 'linear', 'shortcut')`,
     ),
     check("runtime_provider_activation_version_check", sql`${table.configurationVersion} >= 0`),
   ],

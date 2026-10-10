@@ -104,7 +104,7 @@ export async function cancelledConnectionResult(input: {
   auth: AuthServer;
   database: Database;
   request: Request;
-  provider: ConnectionProvider;
+  provider: Exclude<ConnectionProvider, "shortcut">;
   phase:
     | "github_user_authorization"
     | "discord_authorization"

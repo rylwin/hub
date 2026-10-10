@@ -92,6 +92,7 @@ test("only Discord has no inbound events to wait for", () => {
       ["slack", true],
       ["discord", false],
       ["linear", true],
+      ["shortcut", true],
     ],
   );
 });
@@ -290,7 +291,13 @@ test("every field the boundary needs is asked for, in the portal's own words", (
 test("each provider names the panel the operator pastes into after that provider", () => {
   assert.deepEqual(
     PROVIDER_GUIDES.map((guide) => guide.formTitle),
-    ["Paste from GitHub", "Connect Slack", "Paste from Discord", "Paste from Linear"],
+    [
+      "Paste from GitHub",
+      "Connect Slack",
+      "Paste from Discord",
+      "Paste from Linear",
+      "Paste from Shortcut",
+    ],
   );
 });
 
@@ -338,6 +345,79 @@ test("environment-managed copy can name the exact variables the operator has to 
     "LINEAR_CLIENT_SECRET",
     "LINEAR_WEBHOOK_SECRET",
   ]);
+});
+
+test("Shortcut asks only for secrets and binds the configured workspace without OAuth", () => {
+  const shortcut = guideFor("shortcut");
+  assert.deepEqual(
+    guideFields(shortcut, LOCAL).map(({ name, label, kind, identifier, optional }) => ({
+      name,
+      label,
+      kind,
+      identifier,
+      optional,
+    })),
+    [
+      {
+        name: "apiToken",
+        label: "API token",
+        kind: "secret",
+        identifier: undefined,
+        optional: undefined,
+      },
+      {
+        name: "webhookSecret",
+        label: "Webhook signing secret",
+        kind: "secret",
+        identifier: undefined,
+        optional: undefined,
+      },
+    ],
+  );
+  assert.equal(shortcut.savingContinues, false);
+  assert.equal(shortcut.actions.save, "Verify and save");
+  assert.equal(shortcut.actions.connect, "Connect configured workspace");
+  assert.equal(shortcut.actions.connectAgain, undefined);
+  assert.deepEqual(shortcut.urls, [
+    { key: "events", label: "Webhook URL", path: "/api/integrations/shortcut/events" },
+  ]);
+});
+
+test("Shortcut setup names exact token scopes and the narrow native trigger", () => {
+  const shortcut = guideFor("shortcut");
+  const steps = guideGroups(shortcut, ORIGIN).flatMap((group) => group.steps);
+  assert.deepEqual(
+    steps.flatMap((step) => step.events ?? []),
+    ["Read", "Create Story Comments"],
+  );
+  const copy = steps.map(stepText).join(" ");
+  assert.match(copy, /dedicated bot account/);
+  assert.match(copy, /one configured Shortcut token workspace per Hub instance/);
+  assert.match(copy, /same configured workspace only/);
+  assert.match(shortcut.summary, /new story-comment @mentions/);
+  assert.match(shortcut.summary, /story thread/);
+  assert.match(shortcut.saveHint!, /no external OAuth/);
+  assert.match(shortcut.verifiedMessage!, /\/member/);
+  assert.match(shortcut.verifiedMessage!, /workspace and bot identity/);
+  assert.match(shortcut.verifiedMessage!, /does not prove webhook delivery or write permissions/);
+});
+
+test("Shortcut allows webhook-only public ingress without exposing the dashboard", () => {
+  const shortcut = guideFor("shortcut");
+  assert.equal(shortcut.requiresHttps, false);
+  for (const origin of [LOCAL, "https://hub.private.example"]) {
+    const groups = guideGroups(shortcut, origin);
+    assert.ok(groups.every((group) => group.unavailable === undefined));
+    assert.equal(guideFields(shortcut, origin).length, 2);
+    const copy = groups
+      .flatMap((group) => group.steps)
+      .map(stepText)
+      .join(" ");
+    assert.match(copy, /public HTTPS webhook ingress/);
+    assert.match(copy, /keeping the dashboard private/);
+    assert.match(copy, /Private HTTPS alone is not internet reachable/);
+    assert.match(copy, /replace its origin/);
+  }
 });
 
 test("no guide leaks Paseo's internal vocabulary into operator-facing copy", () => {

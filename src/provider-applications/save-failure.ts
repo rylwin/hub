@@ -117,6 +117,7 @@ export function providerHost(provider: Provider): string {
   if (provider === "github") return "api.github.com";
   if (provider === "slack") return "slack.com";
   if (provider === "linear") return "linear.app";
+  if (provider === "shortcut") return "api.app.shortcut.com";
   return "discord.com";
 }
 
@@ -124,6 +125,7 @@ export function providerName(provider: Provider): string {
   if (provider === "github") return "GitHub";
   if (provider === "slack") return "Slack";
   if (provider === "linear") return "Linear";
+  if (provider === "shortcut") return "Shortcut";
   return "Discord";
 }
 
@@ -162,6 +164,9 @@ function credentialMessage(provider: Provider, subject: string | undefined): str
   }
   if (provider === "linear") {
     return "Linear rejected these app credentials. Nothing was saved. Check the Client ID and Client Secret in the Linear application, then continue again.";
+  }
+  if (provider === "shortcut") {
+    return "Shortcut rejected the API token. Nothing was saved. Create a token for the dedicated bot account with Read and Create Story Comments permissions, then verify again.";
   }
   if (subject === "appToken") {
     return "Slack rejected the app-level token. Nothing was saved. Open Basic Information → App-Level Tokens, generate one with connections:write, then connect again.";

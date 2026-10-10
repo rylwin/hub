@@ -9,11 +9,13 @@ export async function readProviderApplicationEnvironment(
   const slack = slackEnvironment(environment);
   const discord = discordEnvironment(environment);
   const linear = linearEnvironment(environment);
+  const shortcut = shortcutEnvironment(environment);
   return {
     ...(github === undefined ? {} : { github }),
     ...(slack === undefined ? {} : { slack }),
     ...(discord === undefined ? {} : { discord }),
     ...(linear === undefined ? {} : { linear }),
+    ...(shortcut === undefined ? {} : { shortcut }),
   };
 }
 
@@ -131,6 +133,20 @@ function linearEnvironment(
     );
   }
   return { provider: "linear", clientId, clientSecret, webhookSecret };
+}
+
+function shortcutEnvironment(
+  environment: Record<string, string | undefined>,
+): ProviderApplicationConfiguration | undefined {
+  const apiToken = nonEmpty(environment["SHORTCUT_API_TOKEN"]);
+  const webhookSecret = nonEmpty(environment["SHORTCUT_WEBHOOK_SECRET"]);
+  if ((apiToken === undefined) !== (webhookSecret === undefined)) {
+    throw new Error(
+      "Shortcut environment configuration requires SHORTCUT_API_TOKEN and SHORTCUT_WEBHOOK_SECRET.",
+    );
+  }
+  if (apiToken === undefined || webhookSecret === undefined) return undefined;
+  return { provider: "shortcut", apiToken, webhookSecret };
 }
 
 function nonEmpty(value: string | undefined): string | undefined {

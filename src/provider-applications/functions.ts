@@ -11,10 +11,11 @@ import {
 } from "./index.js";
 import { providerApplicationSaveFailure, providerHost, providerName } from "./save-failure.js";
 
-const providerSchema = z.enum(["github", "slack", "discord", "linear"]);
+const providerSchema = z.enum(["github", "slack", "discord", "linear", "shortcut"]);
 const surfaceSchema = z.enum(["appSetup", "apps"]).optional();
 const expectedVersionSchema = z.number().int().positive().optional();
-const configurationSchema = z.discriminatedUnion("provider", [
+/** @package The browser-to-server configuration input contract. */
+export const configurationSchema = z.discriminatedUnion("provider", [
   z.object({
     provider: z.literal("github"),
     appId: z.string().trim().min(1),
@@ -49,6 +50,13 @@ const configurationSchema = z.discriminatedUnion("provider", [
     provider: z.literal("linear"),
     clientId: z.string().trim().min(1),
     clientSecret: z.string().min(1),
+    webhookSecret: z.string().min(1),
+    expectedVersion: expectedVersionSchema,
+    surface: surfaceSchema,
+  }),
+  z.object({
+    provider: z.literal("shortcut"),
+    apiToken: z.string().min(1),
     webhookSecret: z.string().min(1),
     expectedVersion: expectedVersionSchema,
     surface: surfaceSchema,
@@ -202,6 +210,9 @@ function sensitiveConfigurationValues(
   if (configuration.provider === "linear") {
     return [configuration.clientSecret, configuration.webhookSecret];
   }
+  if (configuration.provider === "shortcut") {
+    return [configuration.apiToken, configuration.webhookSecret];
+  }
   return [configuration.clientSecret, configuration.botToken];
 }
 
@@ -238,6 +249,14 @@ function normalizedConfiguration(
       provider: data.provider,
       clientId: data.clientId,
       clientSecret: data.clientSecret,
+      webhookSecret: data.webhookSecret,
+      ...version,
+    };
+  }
+  if (data.provider === "shortcut") {
+    return {
+      provider: data.provider,
+      apiToken: data.apiToken,
       webhookSecret: data.webhookSecret,
       ...version,
     };

@@ -14,7 +14,7 @@ export type WorkflowDeadlineKind = "step_hard" | "step_idle" | "whole_run";
 export interface ProviderEventReceiptRecord {
   id: string;
   organizationId: string;
-  provider: "github" | "slack" | "discord" | "linear" | "manual" | "schedule";
+  provider: "github" | "slack" | "discord" | "linear" | "shortcut" | "manual" | "schedule";
   connectionId: string | null;
   resourceId: string | null;
   deliveryId: string;
@@ -280,6 +280,7 @@ export interface OrganizationConnectionUsage {
   discord: DiscordConnectionRecord[];
   slack: SlackConnectionRecord[];
   linear: LinearConnectionRecord[];
+  shortcut: ShortcutConnectionRecord[];
 }
 
 export interface GitHubRepositoryRecord {
@@ -374,14 +375,15 @@ export interface PendingProjectTriggerMigration {
   revision: ProjectConfigurationRevisionRecord;
 }
 
-export type ConnectionProvider = "github" | "discord" | "slack" | "linear";
+export type ConnectionProvider = "github" | "discord" | "slack" | "linear" | "shortcut";
 
 export type ConnectionAttemptPhase =
   | "github_setup"
   | "github_user_authorization"
   | "discord_authorization"
   | "slack_authorization"
-  | "linear_authorization";
+  | "linear_authorization"
+  | "shortcut_verification";
 
 export interface ConnectionAccountAccess {
   sessionId: string;
@@ -467,6 +469,25 @@ export interface LinearConnectionRecord {
   refreshToken: string | null;
   accessTokenExpiresAt: Date | null;
   scopes: string[];
+}
+
+export interface ShortcutConnectionRecord {
+  id: string;
+  organizationId: string;
+  slug: string;
+  providerApplicationId: string | null;
+  workspaceId: string;
+  workspaceName: string;
+  botMemberId: string;
+  apiToken: string;
+}
+
+export interface BindShortcutConnectionInput extends ReadConnectionAttemptInput {
+  providerApplicationId: string;
+  workspaceId: string;
+  workspaceName: string;
+  botMemberId: string;
+  apiToken: string;
 }
 
 export interface StartConnectionAttemptInput {
@@ -564,6 +585,7 @@ export type LinearConnectionRefreshOperation<T> = (
 
 export type DisconnectConnectionResult =
   | { provider: "github" }
+  | { provider: "shortcut" }
   | { provider: "discord"; guildId: string | undefined }
   | {
       provider: "slack";
@@ -644,6 +666,10 @@ export interface AcceptDiscordEventInput extends ProviderEventEvidence {
 
 export interface AcceptSlackEventInput extends ProviderEventEvidence {
   teamId: string;
+}
+
+export interface AcceptShortcutEventInput extends ProviderEventEvidence {
+  workspaceId: string;
 }
 
 export interface AcceptLinearEventInput extends ProviderEventEvidence {
@@ -1288,6 +1314,7 @@ export interface Database {
   acceptGitHubEvent(input: AcceptGitHubEventInput): Promise<ProviderEventAcceptance>;
   acceptDiscordEvent(input: AcceptDiscordEventInput): Promise<ProviderEventAcceptance>;
   acceptSlackEvent(input: AcceptSlackEventInput): Promise<ProviderEventAcceptance>;
+  acceptShortcutEvent(input: AcceptShortcutEventInput): Promise<ProviderEventAcceptance>;
   acceptLinearEvent(input: AcceptLinearEventInput): Promise<ProviderEventAcceptance>;
   persistManualEvent(input: PersistManualEventInput): Promise<ManualEventPersistence>;
   claimGitHubLifecycleReceipt(
@@ -1614,6 +1641,12 @@ export interface Database {
   bindDiscordConnection(input: BindDiscordConnectionInput): Promise<void>;
   bindSlackConnection(input: BindSlackConnectionInput): Promise<void>;
   completeSlackProviderApplication(input: CompleteSlackProviderApplicationInput): Promise<void>;
+  bindShortcutConnection(input: BindShortcutConnectionInput): Promise<void>;
+  findShortcutConnection(workspaceId: string): Promise<ShortcutConnectionRecord | undefined>;
+  findShortcutConnectionForOrganization(
+    organizationId: string,
+    workspaceId: string,
+  ): Promise<ShortcutConnectionRecord | undefined>;
   bindLinearConnection(input: BindLinearConnectionInput): Promise<void>;
   completeLinearProviderApplication(input: CompleteLinearProviderApplicationInput): Promise<void>;
   updateLinearConnectionTokens(input: UpdateLinearConnectionTokensInput): Promise<void>;

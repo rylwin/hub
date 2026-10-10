@@ -174,7 +174,7 @@ const ENVIRONMENT_APPLICATIONS = {
     clientSecret: "linear-secret",
     webhookSecret: "linear-webhook-secret",
   },
-} satisfies Record<Provider, ProviderApplicationConfiguration>;
+} satisfies Record<Exclude<Provider, "shortcut">, ProviderApplicationConfiguration>;
 
 async function legacyDatabase(engine: "PGlite" | "PostgreSQL"): Promise<{
   bundle: DatabaseRuntimeBundle;
@@ -327,6 +327,14 @@ function identity(configuration: ProviderApplicationConfiguration): ProviderAppl
   }
   if (configuration.provider === "linear") {
     return { provider: "linear", id: configuration.clientId, name: "Linear app" };
+  }
+  if (configuration.provider === "shortcut") {
+    return {
+      provider: "shortcut",
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "Shortcut workspace",
+      memberId: "00000000-0000-4000-8000-000000000002",
+    };
   }
   return { provider: "discord", id: configuration.applicationId, name: "Discord app" };
 }

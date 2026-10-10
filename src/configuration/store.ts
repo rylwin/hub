@@ -721,7 +721,8 @@ function providerForEvent(eventName: string): ConnectionProvider | undefined {
   return provider === "github" ||
     provider === "slack" ||
     provider === "discord" ||
-    provider === "linear"
+    provider === "linear" ||
+    provider === "shortcut"
     ? provider
     : undefined;
 }
