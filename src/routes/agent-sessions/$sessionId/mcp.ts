@@ -9,6 +9,16 @@ export const Route = createFileRoute("/agent-sessions/$sessionId/mcp")({
           request,
           new URL(request.url).pathname.split("/")[2] ?? "",
         ),
+      // Session capabilities also use a stateless, POST-only MCP transport.
+      GET: methodNotAllowed,
+      DELETE: methodNotAllowed,
     },
   },
 });
+
+function methodNotAllowed(): Response {
+  return Response.json(
+    { error: "method_not_allowed" },
+    { status: 405, headers: { Allow: "POST" } },
+  );
+}

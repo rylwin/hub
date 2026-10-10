@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { Route } from "./routes/agent-executions/$executionId/mcp.js";
+import { Route as SessionRoute } from "./routes/agent-sessions/$sessionId/mcp.js";
 
 /**
  * TanStack's `Constrain<ObjectLiteral, Fn>` handlers type resolves member
@@ -12,6 +13,19 @@ interface McpRouteMethodHandlers {
   GET(): Response | Promise<Response>;
   DELETE(): Response | Promise<Response>;
 }
+
+it.each(["GET", "DELETE"] as const)(
+  "rejects %s on the session MCP route with 405",
+  async (method) => {
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the generated route type cannot express calling one handler directly
+    const handlers = SessionRoute.options.server?.handlers as unknown as McpRouteMethodHandlers;
+    const response = await handlers[method]();
+
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.get("allow"), "POST");
+    assert.deepEqual(await response.json(), { error: "method_not_allowed" });
+  },
+);
 
 // The execution capability MCP server is stateless and POST-only. Before this
 // guard, an unhandled GET (SSE stream open) or DELETE (session terminate)
