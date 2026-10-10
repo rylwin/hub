@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { validateHeaderName, type IncomingMessage } from "node:http";
+import { validateHeaderName, type IncomingMessage, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import type { Duplex } from "node:stream";
 import type { Logger } from "pino";
@@ -327,18 +327,7 @@ async function main(): Promise<void> {
     logger.info(`server started, available at: ${appUrl}`);
   });
 
-  const stop = async () => {
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error !== undefined) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    });
-    await build.stopProductionRuntime();
-  };
+  const stop = () => stopHttpServer(server, () => build.stopProductionRuntime());
   const stopAfterSignal = () => {
     void shutdownProductionServer(stop)
       .then((clean) => {
@@ -349,6 +338,23 @@ async function main(): Promise<void> {
   };
   process.once("SIGTERM", stopAfterSignal);
   process.once("SIGINT", stopAfterSignal);
+}
+
+export async function stopHttpServer(
+  server: Server,
+  stopRuntime: () => Promise<void>,
+): Promise<void> {
+  const closed = new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error !== undefined) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  // Runtime shutdown closes upgraded daemon sockets that server.close waits for.
+  await Promise.all([closed, stopRuntime()]);
 }
 
 export async function shutdownProductionServer(
