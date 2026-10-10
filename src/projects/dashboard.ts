@@ -455,6 +455,13 @@ function connectionUsageView(
       teamName: connection.teamName,
       requiresReauthorization: !hasRequiredSlackScopes(connection.scopes),
     })),
+    shortcut: connections.shortcut.map((connection) => ({
+      id: connection.id,
+      slug: connection.slug,
+      workspaceId: connection.workspaceId,
+      workspaceName: connection.workspaceName,
+      botMemberId: connection.botMemberId,
+    })),
     linear: connections.linear.map((connection) => ({
       id: connection.id,
       slug: connection.slug,

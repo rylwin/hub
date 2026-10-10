@@ -1,4 +1,6 @@
+import { expect } from "@playwright/test";
 import { test } from "./app.js";
+import { ProjectNavigation } from "./helpers/projects/navigation.js";
 
 const alice = {
   name: "Alice",
@@ -67,6 +69,35 @@ test("locks organization switching while a provider disconnect is pending", asyn
   await hub.connectGitHub("alice");
   await hub.chooseOrganization("alice", "Acme");
   await hub.proveConnectionDisconnectLocksOrganizationSwitch("alice", "Orbit");
+});
+
+test("offers the operator app setup for every unconfigured provider including Shortcut", async ({
+  hub,
+}) => {
+  const session = await hub.openAppSetup({
+    account: {
+      name: "Connection Operator",
+      email: "connection-operator@example.com",
+      password: "connection-operator-password",
+    },
+  });
+  try {
+    await session.surface.leave("Do this later");
+    await new ProjectNavigation(session.page).openOrganizationSection("Connections");
+    for (const provider of ["GitHub", "Discord", "Slack", "Linear", "Shortcut"]) {
+      await expect(
+        session.page.getByRole("heading", { name: provider, exact: true }),
+      ).toBeVisible();
+      await expect(
+        session.page.getByRole("link", { name: `Set up the ${provider} app` }),
+      ).toHaveAttribute("href", "/apps");
+    }
+    await session.surface.accessible();
+    await session.page.getByRole("link", { name: "Set up the Shortcut app" }).click();
+    await session.surface.expectManagement();
+  } finally {
+    await session.close();
+  }
 });
 
 test("shows provider readiness as not configured without credentials", async ({ hub }) => {

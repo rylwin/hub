@@ -6,6 +6,61 @@ import { enrollTestDaemon, TEST_DAEMON_SLUG } from "../test-utils/project-config
 import { ProjectDashboard, type ManualConfigurationInput } from "./dashboard.js";
 
 describe("project dashboard activity read models", () => {
+  it("includes only public Shortcut connection fields in organization and project snapshots", async () => {
+    const database = createMemoryDatabase({
+      memberships: [
+        {
+          userId: "user-1",
+          organizationId: "org-1",
+          organizationName: "Acme",
+          organizationSlug: "acme",
+          membershipId: "membership-1",
+          role: "owner",
+        },
+      ],
+      shortcutConnections: [
+        {
+          id: "shortcut-1",
+          organizationId: "org-1",
+          slug: "acme-shortcut",
+          providerApplicationId: "shortcut-app",
+          workspaceId: "workspace-1",
+          workspaceName: "Acme workspace",
+          botMemberId: "bot-1",
+          apiToken: "never-expose-shortcut-token",
+        },
+      ],
+    });
+    await database.createProject({
+      organizationId: "org-1",
+      name: "Hub",
+      slug: "hub",
+      createdByUserId: "user-1",
+    });
+    const dashboard = new ProjectDashboard(database, accountAuth(), undefined);
+    const request = new Request("https://hub.test/o/acme/projects/hub");
+    const snapshots = await Promise.all([
+      dashboard.organizationSnapshot(request, { organizationSlug: "acme" }),
+      dashboard.projectSnapshot(request, { organizationSlug: "acme", projectSlug: "hub" }),
+    ]);
+
+    for (const snapshot of snapshots) {
+      assert.deepEqual(snapshot.connections.shortcut, [
+        {
+          id: "shortcut-1",
+          slug: "acme-shortcut",
+          workspaceId: "workspace-1",
+          workspaceName: "Acme workspace",
+          botMemberId: "bot-1",
+        },
+      ]);
+      assert.doesNotMatch(
+        JSON.stringify(snapshot.connections),
+        /apiToken|never-expose-shortcut-token/,
+      );
+    }
+  });
+
   it("uses canonical Linear health in project and organization snapshots", async () => {
     const database = createMemoryDatabase({
       memberships: [

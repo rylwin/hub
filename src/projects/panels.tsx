@@ -50,7 +50,7 @@ import {
 } from "./panel-state.js";
 import { archiveProject, activityRunSnapshot, updateProjectSlug } from "./functions.js";
 const CONNECTIONS_DESCRIPTION = "Organization provider connections.";
-const CONNECTION_PROVIDERS = ["github", "discord", "slack", "linear"] as const;
+const CONNECTION_PROVIDERS = ["github", "discord", "slack", "linear", "shortcut"] as const;
 type ConnectionProviderName = (typeof CONNECTION_PROVIDERS)[number];
 
 function ConnectionsLoading() {
@@ -116,11 +116,11 @@ export function OrganizationConnectionsPanel() {
       },
     );
   };
-  const rows = connectionRows(data);
+  const rows = connectionRows(data, status.data);
   const busy = connect.isPending || disconnect.isPending;
   const connectionActionLabel = (provider: ConnectionProviderName) => {
     if (
-      (provider === "slack" || provider === "linear") &&
+      (provider === "slack" || provider === "linear" || provider === "shortcut") &&
       status.data[provider].status === "requiresReauthorization"
     ) {
       return "Reauthorize";
@@ -156,7 +156,7 @@ export function OrganizationConnectionsPanel() {
     );
   };
   // A provider block that can neither be acted on nor list anything says only its own name.
-  // That is every provider for someone who cannot connect one, and four of them is the whole
+  // That is every provider for someone who cannot connect one, and all of them is the whole
   // page talking about work the reader cannot do.
   const shown = CONNECTION_PROVIDERS.map((provider) => ({
     provider,
@@ -209,7 +209,7 @@ export function OrganizationConnectionsPanel() {
 /**
  * One integration, top to bottom: what it is, the one way to connect it, and the accounts it is
  * already connected to. A provider with nothing connected is the same card without a list, so
- * the page reads as the same four blocks whatever state the organization is in.
+ * the page reads as the same provider blocks whatever state the organization is in.
  */
 function ProviderConnections({
   provider,
@@ -315,10 +315,11 @@ export function ProjectOverviewPanel() {
             data.connections.github.length +
               data.connections.discord.length +
               data.connections.slack.length +
-              data.connections.linear.length >
+              data.connections.linear.length +
+              data.connections.shortcut.length >
             0
           }
-          detail={`${String(data.connections.github.length + data.connections.discord.length + data.connections.slack.length + data.connections.linear.length)} organization connections`}
+          detail={`${String(data.connections.github.length + data.connections.discord.length + data.connections.slack.length + data.connections.linear.length + data.connections.shortcut.length)} organization connections`}
         />
       </Section>
       <Section
@@ -681,8 +682,15 @@ function ConnectionReturnBanner({ copy }: { copy: ConnectionReturnCopy }) {
 
 type ConnectionRecord = ReturnType<typeof connectionRows>[number];
 
-function connectionRows(data: OrganizationSnapshot) {
+function connectionRows(data: OrganizationSnapshot, status: ConnectionStatus) {
   return [
+    ...data.connections.shortcut.map((connection) => ({
+      provider: "shortcut" as const,
+      id: connection.id,
+      name: connection.slug,
+      externalId: `workspace ${connection.workspaceId}`,
+      status: status.shortcut.status,
+    })),
     ...data.connections.github.map((connection) => ({
       provider: "github" as const,
       id: connection.id,
@@ -720,12 +728,15 @@ function connectionRows(data: OrganizationSnapshot) {
 function providerLabel(provider: ConnectionProviderName) {
   if (provider === "github") return "GitHub";
   if (provider === "discord") return "Discord";
+  if (provider === "shortcut") return "Shortcut";
   return provider === "slack" ? "Slack" : "Linear";
 }
 
-/** The one connection status a sentence-cased machine value gets wrong. */
+/** Connection statuses whose machine values need a human label. */
 function connectionStatusLabel(status: string): string {
-  return status === "requiresReauthorization" ? "Reauthorization required" : statusLabel(status);
+  if (status === "requiresReauthorization") return "Reauthorization required";
+  if (status === "notConfigured") return "Not configured";
+  return statusLabel(status);
 }
 
 function formString(form: FormData, name: string) {
