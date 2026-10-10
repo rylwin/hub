@@ -207,7 +207,7 @@ async function main(): Promise<void> {
   const githubConfiguration = new BrowserGitHubConfiguration();
   const githubConfigured = hasBrowserGitHub(scenario);
   const slackConfigured = scenario === "slack-only";
-  const registrations =
+  const registrations: readonly ProviderRegistration[] =
     auth === null
       ? []
       : [
@@ -276,6 +276,17 @@ async function main(): Promise<void> {
             publicBaseUrl,
             configuration: null,
           }),
+          {
+            connection: {
+              name: "shortcut",
+              status: () => ({ status: "notConfigured" }),
+              actions: {},
+            },
+            triggerProviders: [],
+            sources: [],
+            outputs: [],
+            requests: [],
+          },
         ];
   const providers = await providerRuntimeOptions(auth, registrations, {
     database,
