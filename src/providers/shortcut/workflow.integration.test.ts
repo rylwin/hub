@@ -99,6 +99,7 @@ async function fixture(options: { continuation?: boolean } = {}) {
   const comments = [comment()];
   const posts: { url: string; body: { text: string; parent_id: number; external_id: string } }[] =
     [];
+  const reactions: { method: string; commentId: number; emoji: string }[] = [];
   let failCommentRead = false;
   const registration = createShortcutRegistration({
     database,
@@ -113,6 +114,21 @@ async function fixture(options: { continuation?: boolean } = {}) {
       assert.equal(request.redirect, "error");
       const url = new URL(request.url);
       assert.equal(url.origin, "https://api.app.shortcut.com");
+      if (url.pathname.endsWith("/reactions")) {
+        const found = comments.find(
+          (value) => url.pathname === `/api/v3/stories/123/comments/${value.id}/reactions`,
+        );
+        assert.ok(found, `unexpected Shortcut reaction request: ${request.url}`);
+        assert.ok(request.method === "POST" || request.method === "DELETE");
+        const body = z
+          .object({ emoji: z.string().min(1) })
+          .strict()
+          .parse(await request.json());
+        reactions.push({ method: request.method, commentId: found.id, emoji: body.emoji });
+        return request.method === "DELETE"
+          ? new Response(null, { status: 204 })
+          : Response.json([{ emoji: body.emoji }], { status: 201 });
+      }
       if (request.method === "POST") {
         assert.equal(url.pathname, "/api/v3/stories/123/comments");
         const body = z
@@ -248,6 +264,7 @@ async function fixture(options: { continuation?: boolean } = {}) {
     daemon,
     comments,
     posts,
+    reactions,
     promptedAgentIds,
     emit(event: AgentEvent) {
       for (const listener of listeners) listener(event);
@@ -343,6 +360,12 @@ it("dispatches a signed native Shortcut comment through Hub and replies to its s
     await test.application.hub.processWorkflowOutbox();
     await expect.poll(() => test.daemon.prompts.length).toBe(1);
     assert.equal(test.daemon.launches.length, 1);
+    await expect
+      .poll(() => test.reactions)
+      .toEqual([
+        { method: "DELETE", commentId: 456, emoji: ":white_check_mark:" },
+        { method: "POST", commentId: 456, emoji: ":hourglass_flowing_sand:" },
+      ]);
     assert.ok(test.daemon.prompts[0]?.includes("Story context"));
     const execution = await test.execution();
     assert.deepEqual(execution.outputContext, {
@@ -425,6 +448,16 @@ it("continues a same-thread follow-up on the original agent and keeps replies ro
     });
     await test.application.hub.processWorkflowOutbox();
     assert.equal(test.posts.length, 2);
+    for (const commentId of [456, 457]) {
+      await expect
+        .poll(() => test.reactions.filter((reaction) => reaction.commentId === commentId))
+        .toEqual([
+          { method: "DELETE", commentId, emoji: ":white_check_mark:" },
+          { method: "POST", commentId, emoji: ":hourglass_flowing_sand:" },
+          { method: "DELETE", commentId, emoji: ":hourglass_flowing_sand:" },
+          { method: "POST", commentId, emoji: ":white_check_mark:" },
+        ]);
+    }
     for (const post of test.posts) {
       assert.equal(post.url, "https://api.app.shortcut.com/api/v3/stories/123/comments");
       expect(post.body).toMatchObject({ parent_id: 456 });

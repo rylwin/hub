@@ -67,6 +67,12 @@ export function createShortcutTriggerProvider(options: {
   ShortcutOutputContext,
   ShortcutMaterializedContext
 > {
+  async function clientForContext(context: ShortcutTriggerContext): Promise<ShortcutApiClient> {
+    const connection = await options.connectionForWorkspace(context.event.shortcut.workspace.id);
+    if (connection === undefined) throw new Error("Shortcut workspace connection unavailable");
+    return connection.client;
+  }
+
   return {
     name: "shortcut",
     eventNames: ["shortcut.comment"],
@@ -143,6 +149,42 @@ export function createShortcutTriggerProvider(options: {
       }
       return matches.length === 0 ? "trigger_filters_rejected" : matches;
     },
+    async onAgentExecutionStarted(context, _outputContext, reactionState) {
+      if (
+        typeof reactionState === "object" &&
+        reactionState !== null &&
+        !Array.isArray(reactionState) &&
+        reactionState["phase"] === "started"
+      )
+        return reactionState;
+      const client = await clientForContext(context);
+      await removeReactionSafely(client, context, ":white_check_mark:");
+      await addReaction(client, context, ":hourglass_flowing_sand:");
+      return { phase: "started" };
+    },
+    async onAgentExecutionCompleted(context) {
+      const client = await clientForContext(context);
+      await removeReactionSafely(client, context, ":hourglass_flowing_sand:");
+      await addReaction(client, context, ":white_check_mark:");
+      return null;
+    },
+    async onAgentExecutionFailed(context) {
+      await removeReactionSafely(
+        await clientForContext(context),
+        context,
+        ":hourglass_flowing_sand:",
+      );
+      return null;
+    },
+    async onMachineTerminated(context, reason, reactionState) {
+      if (reason !== "launch_failed" && reason !== "daemon_disconnected") return reactionState;
+      await removeReactionSafely(
+        await clientForContext(context),
+        context,
+        ":hourglass_flowing_sand:",
+      );
+      return null;
+    },
     async materializeContext(launch) {
       const shortcut = launch.triggerContext.event.shortcut;
       const root: ShortcutContextMessage = {
@@ -202,6 +244,59 @@ export function createShortcutTriggerProvider(options: {
       }
     },
   };
+}
+
+async function addReaction(
+  client: ShortcutApiClient,
+  context: ShortcutTriggerContext,
+  emoji: string,
+): Promise<void> {
+  const shortcut = context.event.shortcut;
+  try {
+    await client.addReaction({ storyId: shortcut.story.id, commentId: shortcut.comment.id, emoji });
+  } catch (error) {
+    reportFailure(
+      error,
+      { operation: "shortcut.reaction.add", component: "triggers", provider: "shortcut" },
+      {
+        diagnostic: {
+          workspaceId: shortcut.workspace.id,
+          storyId: shortcut.story.id,
+          commentId: shortcut.comment.id,
+          reaction: emoji,
+        },
+      },
+    );
+    throw error;
+  }
+}
+
+async function removeReactionSafely(
+  client: ShortcutApiClient,
+  context: ShortcutTriggerContext,
+  emoji: string,
+): Promise<void> {
+  const shortcut = context.event.shortcut;
+  try {
+    await client.removeReaction({
+      storyId: shortcut.story.id,
+      commentId: shortcut.comment.id,
+      emoji,
+    });
+  } catch (error) {
+    reportFailure(
+      error,
+      { operation: "shortcut.reaction.cleanup", component: "triggers", provider: "shortcut" },
+      {
+        diagnostic: {
+          workspaceId: shortcut.workspace.id,
+          storyId: shortcut.story.id,
+          commentId: shortcut.comment.id,
+          reaction: emoji,
+        },
+      },
+    );
+  }
 }
 
 function matchesShortcutScope(

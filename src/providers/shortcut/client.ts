@@ -57,6 +57,8 @@ export interface ShortcutStory {
 }
 
 export interface ShortcutApiClient {
+  addReaction(input: { storyId: number; commentId: number; emoji: string }): Promise<void>;
+  removeReaction(input: { storyId: number; commentId: number; emoji: string }): Promise<void>;
   readMember(): Promise<ShortcutMember>;
   readStory(storyId: number): Promise<ShortcutStory | undefined>;
   readComment(input: { storyId: number; commentId: number }): Promise<ShortcutComment | undefined>;
@@ -87,7 +89,26 @@ export function createShortcutApiClient(options: {
 }): ShortcutApiClient {
   const request: typeof fetch = (input, init) =>
     (options.fetch ?? fetch)(input, { ...init, redirect: "error" });
+  async function changeReaction(
+    method: "POST" | "DELETE",
+    input: Parameters<ShortcutApiClient["addReaction"]>[0],
+  ): Promise<void> {
+    PositiveIdSchema.parse(input.storyId);
+    PositiveIdSchema.parse(input.commentId);
+    z.string().trim().min(1).parse(input.emoji);
+    const response = await request(
+      `${SHORTCUT_API_ORIGIN}/stories/${input.storyId}/comments/${input.commentId}/reactions`,
+      {
+        method,
+        headers: { "Shortcut-Token": options.apiToken, "content-type": "application/json" },
+        body: JSON.stringify({ emoji: input.emoji }),
+      },
+    );
+    if (!response.ok) throw new ShortcutApiError(response.status);
+  }
   return {
+    addReaction: (input) => changeReaction("POST", input),
+    removeReaction: (input) => changeReaction("DELETE", input),
     async createComment(input) {
       PositiveIdSchema.parse(input.storyId);
       if (input.parentId !== undefined) PositiveIdSchema.parse(input.parentId);

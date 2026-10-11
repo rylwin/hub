@@ -5,6 +5,44 @@ import { createShortcutApiClient, ShortcutApiError } from "./client.js";
 const origin = "https://api.app.shortcut.com/api/v3";
 
 describe("Shortcut API client", () => {
+  it("adds a reaction to the specified story comment with header-only authentication", async () => {
+    const client = createShortcutApiClient({
+      apiToken: "reaction-token",
+      fetch: async (url, init) => {
+        assert.equal(url, `${origin}/stories/42/comments/8/reactions`);
+        assert.equal(init?.method, "POST");
+        assert.equal(init?.redirect, "error");
+        const headers = new Headers(init?.headers);
+        assert.equal(headers.get("Shortcut-Token"), "reaction-token");
+        assert.equal(headers.get("content-type"), "application/json");
+        assert.equal(init?.body, JSON.stringify({ emoji: ":hourglass_flowing_sand:" }));
+        return new Response(JSON.stringify([{ emoji: ":hourglass_flowing_sand:" }]), {
+          status: 201,
+        });
+      },
+    });
+    await client.addReaction({ storyId: 42, commentId: 8, emoji: ":hourglass_flowing_sand:" });
+  });
+  it("removes a reaction with a JSON DELETE and accepts 204 without reading JSON", async () => {
+    const client = createShortcutApiClient({
+      apiToken: "reaction-token",
+      fetch: async (url, init) => {
+        assert.equal(url, `${origin}/stories/42/comments/8/reactions`);
+        assert.equal(init?.method, "DELETE");
+        assert.equal(init?.redirect, "error");
+        const headers = new Headers(init?.headers);
+        assert.equal(headers.get("Shortcut-Token"), "reaction-token");
+        assert.equal(headers.get("content-type"), "application/json");
+        assert.equal(init?.body, JSON.stringify({ emoji: ":white_check_mark:" }));
+        const response = new Response(null, { status: 204 });
+        response.json = async () => {
+          throw new Error("must not read DELETE JSON");
+        };
+        return response;
+      },
+    });
+    await client.removeReaction({ storyId: 42, commentId: 8, emoji: ":white_check_mark:" });
+  });
   it.each(["member", "story", "comment", "create"] as const)(
     "refuses redirects on token-bearing %s requests",
     async (operation) => {
@@ -138,6 +176,21 @@ describe("Shortcut API client", () => {
       externalId: "run-1",
     });
   });
+  it.each(["addReaction", "removeReaction"] as const)(
+    "%s throws sanitized status-only errors including missing reactions",
+    async (method) => {
+      for (const status of [301, 401, 403, 404, 429, 500]) {
+        const client = createShortcutApiClient({
+          apiToken: "secret-token",
+          fetch: async () => new Response("secret-token private response body", { status }),
+        });
+        await assert.rejects(
+          client[method]({ storyId: 42, commentId: 8, emoji: ":hourglass_flowing_sand:" }),
+          { name: "ShortcutApiError", message: `Shortcut API HTTP ${status}`, status },
+        );
+      }
+    },
+  );
   it("throws sanitized status-only errors for HTTP failures, including rate limits", async () => {
     for (const status of [401, 403, 429, 500]) {
       const client = createShortcutApiClient({
@@ -177,6 +230,28 @@ describe("Shortcut API client", () => {
       });
     }
   });
+  it.each(["addReaction", "removeReaction"] as const)(
+    "%s validates positive safe IDs and nonempty emoji before requesting",
+    async (method) => {
+      let requests = 0;
+      const client = createShortcutApiClient({
+        apiToken: "test-token",
+        fetch: async () => {
+          requests += 1;
+          return json([]);
+        },
+      });
+      const input = { storyId: 42, commentId: 8, emoji: ":hourglass_flowing_sand:" };
+      for (const id of [0, -1, 1.5, Number.NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+        await assert.rejects(client[method]({ ...input, storyId: id }), { name: "ZodError" });
+        await assert.rejects(client[method]({ ...input, commentId: id }), { name: "ZodError" });
+      }
+      for (const emoji of ["", " ", "\t\n"]) {
+        await assert.rejects(client[method]({ ...input, emoji }), { name: "ZodError" });
+      }
+      assert.equal(requests, 0);
+    },
+  );
   it("rejects unsafe or non-positive integer IDs before any request", async () => {
     let requests = 0;
     const client = createShortcutApiClient({

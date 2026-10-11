@@ -45,6 +45,12 @@ const replyComment: ShortcutComment = {
 function replyFixture(comments: ShortcutComment[] = []) {
   const posted: Parameters<ShortcutApiClient["createComment"]>[0][] = [];
   const client: ShortcutApiClient = {
+    addReaction: async () => {
+      throw new Error("unexpected reaction request");
+    },
+    removeReaction: async () => {
+      throw new Error("unexpected reaction request");
+    },
     readMember: async () => {
       throw new Error("unexpected member request");
     },
@@ -308,6 +314,12 @@ it("posts to the triggering story's comment thread without author impersonation"
     deleted: false,
   };
   const client: ShortcutApiClient = {
+    addReaction: async () => {
+      throw new Error("unexpected reaction request");
+    },
+    removeReaction: async () => {
+      throw new Error("unexpected reaction request");
+    },
     readMember: () => Promise.reject(new Error("unexpected member request")),
     readStory: () => Promise.reject(new Error("unexpected story request")),
     readComment: () => Promise.reject(new Error("unexpected comment request")),

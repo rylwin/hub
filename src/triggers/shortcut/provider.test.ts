@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { it } from "vitest";
+import { it, vi } from "vitest";
+import { z } from "zod";
+import { runWithFailureTracking } from "../../failures/index.js";
 import { createMemoryDatabase } from "../../db/memory.js";
 import { createActiveProjectConfiguration } from "../../test-utils/project-configuration.js";
 import type { ShortcutApiClient, ShortcutComment } from "../../providers/shortcut/client.js";
@@ -25,6 +27,12 @@ const comment: ShortcutComment = {
 
 function clientFor(value: ShortcutComment): ShortcutApiClient {
   return {
+    addReaction: async () => {
+      throw new Error("unexpected reaction during matching");
+    },
+    removeReaction: async () => {
+      throw new Error("unexpected reaction during matching");
+    },
     readMember: () =>
       Promise.resolve({ id: botMemberId, name: "Bot", workspaceId, workspaceName: "Example" }),
     readComment: () => Promise.resolve(value),
@@ -96,7 +104,10 @@ async function fixture(
   }
   const provider = createShortcutTriggerProvider({
     configurationStoreForProject: () => active.store,
-    connectionForWorkspace: () => Promise.resolve({ botMemberId, client }),
+    connectionForWorkspace: (id) => {
+      assert.equal(id, workspaceId);
+      return Promise.resolve({ botMemberId, client });
+    },
   });
   const external: ExternalTrigger = {
     providerEventReceiptId: "receipt-1",
@@ -118,6 +129,369 @@ async function fixture(
   };
   return { provider, external, active };
 }
+
+function failureRecord(logger: { error: { mock: { calls: unknown[][] } } }) {
+  return z
+    .object({
+      operation: z.string(),
+      provider: z.string(),
+      diagnostic: z.object({
+        workspaceId: z.string(),
+        storyId: z.number(),
+        commentId: z.number(),
+        reaction: z.string(),
+      }),
+    })
+    .parse(logger.error.mock.calls[0]?.[0]);
+}
+
+async function lifecycleFixture() {
+  const value = { ...comment, parentId: 400 };
+  const client = clientFor(value);
+  const calls: { method: "add" | "remove"; storyId: number; commentId: number; emoji: string }[] =
+    [];
+  client.addReaction = async (input) => {
+    calls.push({ method: "add", ...input });
+  };
+  client.removeReaction = async (input) => {
+    calls.push({ method: "remove", ...input });
+  };
+  const { provider, external, active } = await fixture(value, "shortcut.mention", client);
+  const result = await provider.match(external);
+  assert.ok(typeof result !== "string" && result[0]);
+  return { provider, client, calls, match: result[0], active };
+}
+
+it("starts execution by replacing the prior check on the triggering reply, not the thread root", async () => {
+  const { provider, calls, match } = await lifecycleFixture();
+  assert.equal(match.outputContext.parentId, 400);
+  match.triggerContext.target = {
+    ...match.triggerContext.target,
+    workspaceId: "wrong",
+    storyId: 999,
+  };
+  assert.ok(typeof provider.onAgentExecutionStarted === "function");
+  assert.deepEqual(
+    await provider.onAgentExecutionStarted(match.triggerContext, match.outputContext),
+    { phase: "started" },
+  );
+  assert.deepEqual(calls, [
+    { method: "remove", storyId: 123, commentId: 456, emoji: ":white_check_mark:" },
+    { method: "add", storyId: 123, commentId: 456, emoji: ":hourglass_flowing_sand:" },
+  ]);
+});
+
+it("skips repeated starts using the durable started phase", async () => {
+  const { provider, client, calls, match } = await lifecycleFixture();
+  assert.ok(typeof provider.onAgentExecutionStarted === "function");
+  const state = await provider.onAgentExecutionStarted(match.triggerContext, match.outputContext);
+  assert.ok(state !== undefined);
+  client.addReaction = client.removeReaction = async () => {
+    throw new Error("duplicate reaction request");
+  };
+  const persisted = z.object({ phase: z.string() }).parse(JSON.parse(JSON.stringify(state)));
+  assert.equal(
+    await provider.onAgentExecutionStarted(match.triggerContext, match.outputContext, persisted),
+    persisted,
+  );
+  assert.equal(calls.length, 2);
+});
+
+it("reports check cleanup failures but still adds the starting hourglass", async () => {
+  const { provider, client, calls, match } = await lifecycleFixture();
+  const remove = client.removeReaction.bind(client);
+  client.removeReaction = async (input) => {
+    await remove(input);
+    throw new Error("cleanup unavailable");
+  };
+  const logger = { warn: vi.fn(), error: vi.fn() };
+  assert.ok(typeof provider.onAgentExecutionStarted === "function");
+  const state = await runWithFailureTracking(
+    () => provider.onAgentExecutionStarted!(match.triggerContext, match.outputContext),
+    logger,
+  );
+  assert.deepEqual(state, { phase: "started" });
+  assert.deepEqual(
+    calls.map(({ method, emoji }) => [method, emoji]),
+    [
+      ["remove", ":white_check_mark:"],
+      ["add", ":hourglass_flowing_sand:"],
+    ],
+  );
+  assert.equal(logger.error.mock.calls.length, 1);
+  assert.equal(failureRecord(logger).operation, "shortcut.reaction.cleanup");
+  assert.equal(failureRecord(logger).provider, "shortcut");
+  assert.deepEqual(failureRecord(logger).diagnostic, {
+    workspaceId,
+    storyId: 123,
+    commentId: 456,
+    reaction: ":white_check_mark:",
+  });
+});
+
+it("reports and rethrows hourglass addition failures so starts can retry", async () => {
+  const { provider, client, calls, match } = await lifecycleFixture();
+  const add = client.addReaction.bind(client);
+  const failure = new Error("reaction unavailable");
+  client.addReaction = async () => {
+    throw failure;
+  };
+  const logger = { warn: vi.fn(), error: vi.fn() };
+  assert.ok(typeof provider.onAgentExecutionStarted === "function");
+  await assert.rejects(
+    runWithFailureTracking(
+      () => provider.onAgentExecutionStarted!(match.triggerContext, match.outputContext),
+      logger,
+    ),
+    (error) => error === failure,
+  );
+  assert.equal(logger.error.mock.calls.length, 1);
+  assert.equal(failureRecord(logger).operation, "shortcut.reaction.add");
+  assert.deepEqual(failureRecord(logger).diagnostic, {
+    workspaceId,
+    storyId: 123,
+    commentId: 456,
+    reaction: ":hourglass_flowing_sand:",
+  });
+  client.addReaction = add;
+  assert.deepEqual(
+    await provider.onAgentExecutionStarted(match.triggerContext, match.outputContext),
+    { phase: "started" },
+  );
+  assert.equal(calls.at(-1)?.emoji, ":hourglass_flowing_sand:");
+});
+
+it.each([undefined, null, { phase: "started" }])(
+  "completes by replacing the hourglass on the triggering comment (state=%j)",
+  async (state) => {
+    const { provider, calls, match } = await lifecycleFixture();
+    assert.ok(typeof provider.onAgentExecutionCompleted === "function");
+    assert.equal(
+      await provider.onAgentExecutionCompleted(
+        match.triggerContext,
+        match.outputContext,
+        { status: "succeeded" },
+        state,
+      ),
+      null,
+    );
+    assert.deepEqual(calls, [
+      { method: "remove", storyId: 123, commentId: 456, emoji: ":hourglass_flowing_sand:" },
+      { method: "add", storyId: 123, commentId: 456, emoji: ":white_check_mark:" },
+    ]);
+  },
+);
+
+it("reports hourglass cleanup failures but still adds the completion check", async () => {
+  const { provider, client, calls, match } = await lifecycleFixture();
+  const remove = client.removeReaction.bind(client);
+  client.removeReaction = async (input) => {
+    await remove(input);
+    throw new Error("cleanup unavailable");
+  };
+  const logger = { warn: vi.fn(), error: vi.fn() };
+  assert.ok(typeof provider.onAgentExecutionCompleted === "function");
+  assert.equal(
+    await runWithFailureTracking(
+      () =>
+        provider.onAgentExecutionCompleted!(
+          match.triggerContext,
+          match.outputContext,
+          { status: "succeeded" },
+          { phase: "started" },
+        ),
+      logger,
+    ),
+    null,
+  );
+  assert.deepEqual(
+    calls.map(({ method, emoji }) => [method, emoji]),
+    [
+      ["remove", ":hourglass_flowing_sand:"],
+      ["add", ":white_check_mark:"],
+    ],
+  );
+  assert.equal(failureRecord(logger).operation, "shortcut.reaction.cleanup");
+});
+
+it("reports and rethrows completion check failures so delivery can retry", async () => {
+  const { provider, client, calls, match } = await lifecycleFixture();
+  const add = client.addReaction.bind(client);
+  const failure = new Error("reaction unavailable");
+  client.addReaction = async () => {
+    throw failure;
+  };
+  const logger = { warn: vi.fn(), error: vi.fn() };
+  assert.ok(typeof provider.onAgentExecutionCompleted === "function");
+  await assert.rejects(
+    runWithFailureTracking(
+      () =>
+        provider.onAgentExecutionCompleted!(
+          match.triggerContext,
+          match.outputContext,
+          { status: "succeeded" },
+          { phase: "started" },
+        ),
+      logger,
+    ),
+    (error) => error === failure,
+  );
+  assert.equal(logger.error.mock.calls.length, 1);
+  assert.equal(failureRecord(logger).operation, "shortcut.reaction.add");
+  assert.equal(failureRecord(logger).diagnostic.reaction, ":white_check_mark:");
+  client.addReaction = add;
+  assert.equal(
+    await provider.onAgentExecutionCompleted(
+      match.triggerContext,
+      match.outputContext,
+      { status: "succeeded" },
+      { phase: "started" },
+    ),
+    null,
+  );
+  assert.equal(calls.at(-1)?.emoji, ":white_check_mark:");
+});
+
+it.each([undefined, null, { phase: "started" }])(
+  "cleans up failed execution without adding a false check (state=%j)",
+  async (state) => {
+    const { provider, calls, match } = await lifecycleFixture();
+    assert.ok(typeof provider.onAgentExecutionFailed === "function");
+    assert.equal(
+      await provider.onAgentExecutionFailed(
+        match.triggerContext,
+        match.outputContext,
+        "agent_failed",
+        state,
+      ),
+      null,
+    );
+    assert.deepEqual(calls, [
+      { method: "remove", storyId: 123, commentId: 456, emoji: ":hourglass_flowing_sand:" },
+    ]);
+  },
+);
+
+it.each(["launch_failed", "daemon_disconnected"])(
+  "cleans up the hourglass without a false check on %s termination",
+  async (reason) => {
+    const { provider, calls, match } = await lifecycleFixture();
+    assert.ok(typeof provider.onMachineTerminated === "function");
+    assert.equal(
+      await provider.onMachineTerminated(match.triggerContext, reason, { phase: "started" }),
+      null,
+    );
+    assert.deepEqual(calls, [
+      { method: "remove", storyId: 123, commentId: 456, emoji: ":hourglass_flowing_sand:" },
+    ]);
+  },
+);
+
+it.each(["completed", "idle_timeout", "max_runtime", "cancelled", "unknown"])(
+  "preserves reaction state without changing reactions on %s termination",
+  async (reason) => {
+    const { provider, calls, match } = await lifecycleFixture();
+    assert.ok(typeof provider.onMachineTerminated === "function");
+    const state = { phase: "started" };
+    assert.equal(await provider.onMachineTerminated(match.triggerContext, reason, state), state);
+    assert.deepEqual(calls, []);
+  },
+);
+
+it.each([null, [], "started", { phase: "accepted" }])(
+  "does not skip starts for a non-started durable state %j",
+  async (state) => {
+    const { provider, calls, match } = await lifecycleFixture();
+    assert.ok(typeof provider.onAgentExecutionStarted === "function");
+    assert.deepEqual(
+      await provider.onAgentExecutionStarted(match.triggerContext, match.outputContext, state),
+      { phase: "started" },
+    );
+    assert.equal(calls.length, 2);
+  },
+);
+
+it.each(["failed", "launch_failed", "daemon_disconnected"])(
+  "reports best-effort hourglass cleanup on %s without adding a check",
+  async (reason) => {
+    const { provider, client, calls, match } = await lifecycleFixture();
+    const remove = client.removeReaction.bind(client);
+    client.removeReaction = async (input) => {
+      await remove(input);
+      throw new Error("cleanup unavailable");
+    };
+    const logger = { warn: vi.fn(), error: vi.fn() };
+    const state = { phase: "started" };
+    assert.ok(typeof provider.onAgentExecutionFailed === "function");
+    assert.ok(typeof provider.onMachineTerminated === "function");
+    const result = await runWithFailureTracking(
+      () =>
+        reason === "failed"
+          ? provider.onAgentExecutionFailed!(
+              match.triggerContext,
+              match.outputContext,
+              reason,
+              state,
+            )
+          : provider.onMachineTerminated!(match.triggerContext, reason, state),
+      logger,
+    );
+    assert.equal(result, null);
+    assert.deepEqual(calls, [
+      { method: "remove", storyId: 123, commentId: 456, emoji: ":hourglass_flowing_sand:" },
+    ]);
+    assert.equal(logger.error.mock.calls.length, 1);
+    assert.equal(failureRecord(logger).operation, "shortcut.reaction.cleanup");
+  },
+);
+
+it.each(["started", "completed", "failed", "launch_failed", "daemon_disconnected"])(
+  "throws a secret-free error when the workspace connection is missing on %s",
+  async (phase) => {
+    const { match, active } = await lifecycleFixture();
+    const provider = createShortcutTriggerProvider({
+      configurationStoreForProject: () => active.store,
+      connectionForWorkspace: async (id) => {
+        assert.equal(id, workspaceId);
+        return undefined;
+      },
+    });
+    const state = { phase: "started" };
+    await assert.rejects(
+      async () => {
+        if (phase === "started") {
+          assert.ok(typeof provider.onAgentExecutionStarted === "function");
+          await provider.onAgentExecutionStarted(match.triggerContext, match.outputContext);
+        } else if (phase === "completed") {
+          assert.ok(typeof provider.onAgentExecutionCompleted === "function");
+          await provider.onAgentExecutionCompleted(
+            match.triggerContext,
+            match.outputContext,
+            { status: "succeeded" },
+            state,
+          );
+        } else if (phase === "failed") {
+          assert.ok(typeof provider.onAgentExecutionFailed === "function");
+          await provider.onAgentExecutionFailed(
+            match.triggerContext,
+            match.outputContext,
+            phase,
+            state,
+          );
+        } else {
+          assert.ok(typeof provider.onMachineTerminated === "function");
+          await provider.onMachineTerminated(match.triggerContext, phase, state);
+        }
+      },
+      { message: "Shortcut workspace connection unavailable" },
+    );
+    assert.ok(typeof provider.onMachineTerminated === "function");
+    assert.equal(
+      await provider.onMachineTerminated(match.triggerContext, "completed", state),
+      state,
+    );
+  },
+);
 
 it("rejects an external source other than shortcut.comment before parsing", async () => {
   const { provider, external } = await fixture();
