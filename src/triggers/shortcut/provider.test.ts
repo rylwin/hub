@@ -521,39 +521,48 @@ it("rejects a mismatched API story ID", async () => {
   assert.ok((await provider.match(external)) === "trigger_filters_rejected");
 });
 
-it("ignores events whose signed actor is the bot even when the author differs", async () => {
-  const { provider, external } = await fixture(comment, "shortcut.mention", clientFor(comment), {
-    filters: { from_users: [botMemberId] },
-  });
-  external.payload = {
-    ...NormalizedShortcutCommentEventSchema.parse(external.payload),
-    actorId: botMemberId,
-  };
-  assert.ok((await provider.match(external)) === "trigger_filters_rejected");
-});
+it.each([botMemberId, "*"])(
+  "ignores events whose signed actor is the bot even when the author differs (from_users=%s)",
+  async (allowedUser) => {
+    const { provider, external } = await fixture(comment, "shortcut.mention", clientFor(comment), {
+      filters: { from_users: [allowedUser] },
+    });
+    external.payload = {
+      ...NormalizedShortcutCommentEventSchema.parse(external.payload),
+      actorId: botMemberId,
+    };
+    assert.ok((await provider.match(external)) === "trigger_filters_rejected");
+  },
+);
 
-it("enforces the compiled connection binding", async () => {
-  const connectionId = "00000000-0000-4000-8000-000000000006";
-  const { provider, external } = await fixture(
-    comment,
-    "shortcut.mention",
-    clientFor(comment),
-    {},
-    connectionId,
-  );
-  assert.ok((await provider.match(external)) === "trigger_filters_rejected");
-  external.connectionId = connectionId;
-  assert.ok(Array.isArray(await provider.match(external)));
-});
+it.each([actorId, "*"])(
+  "enforces the compiled connection binding (from_users=%s)",
+  async (allowedUser) => {
+    const connectionId = "00000000-0000-4000-8000-000000000006";
+    const { provider, external } = await fixture(
+      comment,
+      "shortcut.mention",
+      clientFor(comment),
+      { filters: { from_users: [allowedUser] } },
+      connectionId,
+    );
+    assert.ok((await provider.match(external)) === "trigger_filters_rejected");
+    external.connectionId = connectionId;
+    assert.ok(Array.isArray(await provider.match(external)));
+  },
+);
 
-it("filters accepted invocations by declared inputs", async () => {
-  const value = { ...comment, text: "mode=review @devbot investigate" };
-  const { provider, external } = await fixture(value, "shortcut.mention", clientFor(value), {
-    inputs: { mode: { type: "string", required: true } },
-    filters: { from_users: [actorId], inputs: { mode: "fix" } },
-  });
-  assert.ok((await provider.match(external)) === "trigger_filters_rejected");
-});
+it.each([actorId, "*"])(
+  "filters accepted invocations by declared inputs (from_users=%s)",
+  async (allowedUser) => {
+    const value = { ...comment, text: "mode=review @devbot investigate" };
+    const { provider, external } = await fixture(value, "shortcut.mention", clientFor(value), {
+      inputs: { mode: { type: "string", required: true } },
+      filters: { from_users: [allowedUser], inputs: { mode: "fix" } },
+    });
+    assert.ok((await provider.match(external)) === "trigger_filters_rejected");
+  },
+);
 
 it("uses thread-scoped conversation keys for roots and follow-up mentions", async () => {
   async function conversation(value: ShortcutComment) {
@@ -793,13 +802,16 @@ it.each(["readComment", "readStory"] as const)(
   },
 );
 
-it("requires the signed creation actor to be the fetched comment author", async () => {
-  const { provider, external } = await fixture({
-    ...comment,
-    authorId: "00000000-0000-4000-8000-000000000009",
-  });
-  assert.ok((await provider.match(external)) === "trigger_filters_rejected");
-});
+it.each([actorId, "*"])(
+  "requires the signed creation actor to be the fetched comment author (from_users=%s)",
+  async (allowedUser) => {
+    const value = { ...comment, authorId: "00000000-0000-4000-8000-000000000009" };
+    const { provider, external } = await fixture(value, "shortcut.mention", clientFor(value), {
+      filters: { from_users: [allowedUser] },
+    });
+    assert.ok((await provider.match(external)) === "trigger_filters_rejected");
+  },
+);
 
 it("rejects a triggering comment edited after the signed creation event", async () => {
   const { provider, external } = await fixture({ ...comment, updatedAt: "2026-10-10T12:00:01Z" });
@@ -845,11 +857,38 @@ it("does not treat display text as a mention of the connected member", async () 
   assert.equal(result, "trigger_filters_rejected");
 });
 
-it("ignores the bot's own comments to prevent reply loops", async () => {
-  const { provider, external } = await fixture({ ...comment, authorId: botMemberId });
-  const result = await provider.match(external);
+it.each([actorId, "*"])(
+  "ignores the bot's own comments to prevent reply loops (from_users=%s)",
+  async (allowedUser) => {
+    const value = { ...comment, authorId: botMemberId };
+    const { provider, external } = await fixture(value, "shortcut.mention", clientFor(value), {
+      filters: { from_users: [allowedUser] },
+    });
+    external.payload = {
+      ...NormalizedShortcutCommentEventSchema.parse(external.payload),
+      actorId: botMemberId,
+    };
 
-  assert.equal(result, "trigger_filters_rejected");
+    assert.equal(await provider.match(external), "trigger_filters_rejected");
+  },
+);
+
+it("allows a different human actor when the author allowlist contains a wildcard", async () => {
+  const otherActorId = "00000000-0000-4000-8000-000000000009";
+  const value = { ...comment, authorId: otherActorId };
+  const { provider, external } = await fixture(value, "shortcut.mention", clientFor(value), {
+    filters: { from_users: ["*"] },
+  });
+  external.payload = {
+    ...NormalizedShortcutCommentEventSchema.parse(external.payload),
+    actorId: otherActorId,
+  };
+
+  const result = await provider.match(external);
+  assert.ok(typeof result !== "string" && result[0]);
+  assert.ok(isAcceptedTriggerProviderMatch(result[0]));
+  assert.equal(result[0].triggerContext.event.shortcut.actor.id, otherActorId);
+  assert.equal(result[0].invocation.prompt, comment.text);
 });
 
 it("enforces the configured author allowlist using the webhook actor", async () => {

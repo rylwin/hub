@@ -325,6 +325,32 @@ describe("workflow compiler", () => {
     });
   });
 
+  it("preserves an explicit Shortcut actor wildcard in compiled configurations", () => {
+    const raw = configuration();
+    const compiled = compileHubConfig({
+      ...raw,
+      triggers: [{ ...raw.triggers[0], on: "shortcut.mention", filters: { from_users: ["*"] } }],
+    });
+
+    assert.deepEqual(compiled.triggers[0]?.filters?.from_users, ["*"]);
+    assert.deepEqual(parseCompiledHubConfig(compiled), compiled);
+  });
+
+  it.each([{}, { from_users: [] }])(
+    "rejects Shortcut mentions without an explicit actor allowlist (filters=%j)",
+    (filters) => {
+      const raw = configuration();
+      assert.throws(
+        () =>
+          compileHubConfig({
+            ...raw,
+            triggers: [{ ...raw.triggers[0], on: "shortcut.mention", filters }],
+          }),
+        /requires a non-empty filters\.from_users allowlist/iu,
+      );
+    },
+  );
+
   it("allows a project-scoped Linear scout but keeps reactive Linear triggers actor-allowlisted", () => {
     const raw = configuration();
     const trigger = raw.triggers[0]!;

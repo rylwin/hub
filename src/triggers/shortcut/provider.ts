@@ -305,7 +305,12 @@ function matchesShortcutScope(
   actorId: string,
 ): boolean {
   if (filters?.connectionId !== undefined && filters.connectionId !== connectionId) return false;
-  if (filters?.from_users !== undefined && !filters.from_users.includes(actorId)) return false;
+  if (
+    filters?.from_users !== undefined &&
+    !filters.from_users.includes("*") &&
+    !filters.from_users.includes(actorId)
+  )
+    return false;
   return true;
 }
 
