@@ -58,6 +58,9 @@ export interface ShortcutWorkspaceClient {
   client: ShortcutApiClient;
 }
 
+const TIMEOUT_NOTICE =
+  "DevBot reached its execution time limit before finishing. Progress has been saved. Mention @DevBot again to continue from the latest checkpoint.";
+
 export function createShortcutTriggerProvider(options: {
   configurationStoreForProject: (projectId: string) => ProjectConfigurationStore;
   connectionForWorkspace(workspaceId: string): Promise<ShortcutWorkspaceClient | undefined>;
@@ -168,12 +171,17 @@ export function createShortcutTriggerProvider(options: {
       await addReaction(client, context, ":white_check_mark:");
       return null;
     },
-    async onAgentExecutionFailed(context) {
-      await removeReactionSafely(
-        await clientForContext(context),
-        context,
-        ":hourglass_flowing_sand:",
-      );
+    async onAgentExecutionFailed(context, _outputContext, reason) {
+      const client = await clientForContext(context);
+      await removeReactionSafely(client, context, ":hourglass_flowing_sand:");
+      if (isTimeoutFailure(reason)) {
+        await addReaction(client, context, ":x:");
+        await client.createComment({
+          storyId: context.target.storyId,
+          parentId: context.target.parentId,
+          text: TIMEOUT_NOTICE,
+        });
+      }
       return null;
     },
     async onMachineTerminated(context, reason, reactionState) {
@@ -297,6 +305,15 @@ async function removeReactionSafely(
       },
     );
   }
+}
+
+function isTimeoutFailure(reason: string): boolean {
+  return (
+    reason === "timeout" ||
+    reason === "max_runtime" ||
+    reason.endsWith("_timeout") ||
+    reason.endsWith("_timed_out")
+  );
 }
 
 function matchesShortcutScope(

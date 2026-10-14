@@ -150,16 +150,28 @@ async function lifecycleFixture() {
   const client = clientFor(value);
   const calls: { method: "add" | "remove"; storyId: number; commentId: number; emoji: string }[] =
     [];
+  const posted: Parameters<ShortcutApiClient["createComment"]>[0][] = [];
   client.addReaction = async (input) => {
     calls.push({ method: "add", ...input });
   };
   client.removeReaction = async (input) => {
     calls.push({ method: "remove", ...input });
   };
+  client.createComment = async (input) => {
+    posted.push(input);
+    return {
+      ...value,
+      id: 457,
+      text: input.text,
+      authorId: botMemberId,
+      parentId: input.parentId ?? null,
+      externalId: input.externalId ?? null,
+    };
+  };
   const { provider, external, active } = await fixture(value, "shortcut.mention", client);
   const result = await provider.match(external);
   assert.ok(typeof result !== "string" && result[0]);
-  return { provider, client, calls, match: result[0], active };
+  return { provider, client, calls, posted, match: result[0], active };
 }
 
 it("starts execution by replacing the prior check on the triggering reply, not the thread root", async () => {
@@ -352,10 +364,40 @@ it("reports and rethrows completion check failures so delivery can retry", async
   assert.equal(calls.at(-1)?.emoji, ":white_check_mark:");
 });
 
+it.each([
+  "timeout",
+  "idle_timeout",
+  "max_runtime",
+  "whole_run_timeout",
+  "step_hard_timeout",
+  "step_idle_timeout",
+  "workflow_timed_out",
+])("replaces the hourglass with an X and posts a threaded notice on %s", async (reason) => {
+  const { provider, calls, posted, match } = await lifecycleFixture();
+  assert.ok(typeof provider.onAgentExecutionFailed === "function");
+  assert.equal(
+    await provider.onAgentExecutionFailed(match.triggerContext, match.outputContext, reason, {
+      phase: "started",
+    }),
+    null,
+  );
+  assert.deepEqual(calls, [
+    { method: "remove", storyId: 123, commentId: 456, emoji: ":hourglass_flowing_sand:" },
+    { method: "add", storyId: 123, commentId: 456, emoji: ":x:" },
+  ]);
+  assert.deepEqual(posted, [
+    {
+      storyId: 123,
+      parentId: 400,
+      text: "DevBot reached its execution time limit before finishing. Progress has been saved. Mention @DevBot again to continue from the latest checkpoint.",
+    },
+  ]);
+});
+
 it.each([undefined, null, { phase: "started" }])(
   "cleans up failed execution without adding a false check (state=%j)",
   async (state) => {
-    const { provider, calls, match } = await lifecycleFixture();
+    const { provider, calls, posted, match } = await lifecycleFixture();
     assert.ok(typeof provider.onAgentExecutionFailed === "function");
     assert.equal(
       await provider.onAgentExecutionFailed(
@@ -369,6 +411,7 @@ it.each([undefined, null, { phase: "started" }])(
     assert.deepEqual(calls, [
       { method: "remove", storyId: 123, commentId: 456, emoji: ":hourglass_flowing_sand:" },
     ]);
+    assert.deepEqual(posted, []);
   },
 );
 
