@@ -104,7 +104,10 @@ describe("Shortcut API client", () => {
           name: "Fix it",
           description: "Details",
           app_url: "https://app.shortcut.com/acme/story/42",
-          comments: [commentResponse(), commentResponse({ id: 8, parent_id: 7, deleted: true })],
+          comments: [
+            commentResponse(),
+            commentResponse({ id: 8, parent_id: 7, text: null, deleted: true }),
+          ],
         });
       },
     });
@@ -114,7 +117,7 @@ describe("Shortcut API client", () => {
       name: "Fix it",
       description: "Details",
       url: "https://app.shortcut.com/acme/story/42",
-      comments: [commentData(), { ...commentData(), id: 8, parentId: 7, deleted: true }],
+      comments: [commentData(), { ...commentData(), id: 8, text: "", parentId: 7, deleted: true }],
     });
   });
   it("reads the full triggering comment on its story", async () => {

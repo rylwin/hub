@@ -15,18 +15,23 @@ export interface ShortcutMember {
 }
 
 const PositiveIdSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
-const CommentResponseSchema = z.object({
-  id: PositiveIdSchema,
-  story_id: PositiveIdSchema,
-  text: z.string(),
-  author_id: z.string().min(1),
-  created_at: z.string().datetime({ offset: true }),
-  updated_at: z.string().datetime({ offset: true }).optional(),
-  parent_id: PositiveIdSchema.nullable(),
-  member_mention_ids: z.array(z.string().min(1)),
-  external_id: z.string().nullable(),
-  deleted: z.boolean(),
-});
+const CommentResponseSchema = z
+  .object({
+    id: PositiveIdSchema,
+    story_id: PositiveIdSchema,
+    text: z.string().nullable(),
+    author_id: z.string().min(1),
+    created_at: z.string().datetime({ offset: true }),
+    updated_at: z.string().datetime({ offset: true }).optional(),
+    parent_id: PositiveIdSchema.nullable(),
+    member_mention_ids: z.array(z.string().min(1)),
+    external_id: z.string().nullable(),
+    deleted: z.boolean(),
+  })
+  .refine((comment) => comment.deleted || comment.text !== null, {
+    path: ["text"],
+    message: "Active Shortcut comments require text",
+  });
 const StoryResponseSchema = z.object({
   id: PositiveIdSchema,
   name: z.string(),
@@ -169,7 +174,7 @@ function toComment(comment: z.infer<typeof CommentResponseSchema>): ShortcutComm
   return {
     id: comment.id,
     storyId: comment.story_id,
-    text: comment.text,
+    text: comment.text ?? "",
     authorId: comment.author_id,
     createdAt: comment.created_at,
     ...(comment.updated_at === undefined ? {} : { updatedAt: comment.updated_at }),
