@@ -35,7 +35,19 @@ const SlackFileInfoSchema = SlackApiResponseSchema.extend({
     .optional(),
 });
 const SlackUserInfoSchema = SlackApiResponseSchema.extend({
-  user: z.object({ name: z.string().min(1).max(255) }).optional(),
+  user: z
+    .object({
+      name: z.string().min(1).max(255),
+      real_name: z.string().max(255).optional(),
+      profile: z
+        .object({
+          display_name: z.string().max(255).optional(),
+          real_name: z.string().max(255).optional(),
+          email: z.string().email().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 const SLACK_API_TIMEOUT_MS = 10_000;
 const SLACK_THREAD_REPLIES_MAX_PAGES = 10;
@@ -59,6 +71,13 @@ export interface SlackThreadMessage {
 export interface SlackThreadReadResult {
   messages: SlackThreadMessage[];
   complete: boolean;
+}
+
+export interface SlackUserProfile {
+  username: string;
+  displayName?: string;
+  realName?: string;
+  email?: string;
 }
 
 export interface SlackBotClient {
@@ -95,6 +114,11 @@ export interface SlackBotClient {
     teamId: string;
     userId: string;
   }): Promise<string | undefined>;
+  lookupUserProfile?(input: {
+    organizationId: string;
+    teamId: string;
+    userId: string;
+  }): Promise<SlackUserProfile | undefined>;
   downloadAttachment?(input: {
     organizationId: string;
     teamId: string;
@@ -267,16 +291,16 @@ export function createSlackBotClient(options: {
     });
   }
 
-  async function lookupUserName(input: {
+  async function lookupUser(input: {
     organizationId: string;
     teamId: string;
     userId: string;
-  }): Promise<string | undefined> {
+  }): Promise<z.infer<typeof SlackUserInfoSchema>["user"]> {
     const result = SlackUserInfoSchema.parse(
       await callJson(input.organizationId, input.teamId, "users.info", { user: input.userId }),
     );
     if (!result.ok) throw new Error(`Slack API ${result.error ?? "unknown_error"}`);
-    return result.user?.name;
+    return result.user;
   }
 
   return {
@@ -299,9 +323,26 @@ export function createSlackBotClient(options: {
         name: input.name,
       }),
     readThreadMessages,
-    lookupUserName,
+    lookupUserName: async (input) => (await lookupUser(input))?.name,
+    lookupUserProfile: async (input) => {
+      const user = await lookupUser(input);
+      if (user === undefined) return undefined;
+      const displayName = nonempty(user.profile?.display_name);
+      const realName = nonempty(user.profile?.real_name ?? user.real_name);
+      const email = nonempty(user.profile?.email);
+      return {
+        username: user.name,
+        ...(displayName === undefined ? {} : { displayName }),
+        ...(realName === undefined ? {} : { realName }),
+        ...(email === undefined ? {} : { email }),
+      };
+    },
     downloadAttachment,
   };
+}
+
+function nonempty(value: string | undefined): string | undefined {
+  return value === undefined || value.length === 0 ? undefined : value;
 }
 
 function normalizeThreadMessage(

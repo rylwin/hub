@@ -355,6 +355,47 @@ describe("Slack Phase 1 trigger provider", () => {
     ]);
   });
 
+  it("materializes the triggering requester's Slack profile", async () => {
+    const database = createMemoryDatabase();
+    const { project, revision, store } = await createActiveProjectConfiguration(
+      database,
+      configuration(),
+      { organizationId: "org-1" },
+    );
+    const client = new RecordingSlackClient({
+      profile: {
+        username: "operator",
+        displayName: "Operator",
+        realName: "Op Erator",
+        email: "operator@example.com",
+      },
+    });
+    const provider = createSlackTriggerProvider({
+      configurationStoreForProject: () => store,
+      botUserIdForWorkspace: () => Promise.resolve("UBOT"),
+      client,
+    });
+    const match = (await provider.match(external(project.id, revision.id, { threadTs: null })))[0];
+    if (!isAcceptedTriggerProviderMatch(match)) throw new Error("expected accepted match");
+
+    const context = await provider.materializeContext!({
+      executionId: "execution-slack-requester",
+      organizationId: "org-1",
+      projectId: project.id,
+      providerEventReceiptId: "11111111-1111-4111-8111-111111111119",
+      triggerContext: match.triggerContext,
+    });
+
+    assert.deepEqual(context.slack.requester, {
+      id: "U1",
+      username: "operator",
+      display_name: "Operator",
+      real_name: "Op Erator",
+      email: "operator@example.com",
+    });
+    assert.deepEqual(client.profileLookups, ["U1"]);
+  });
+
   it("defers routed thread hydration until context materialization", async () => {
     const database = createMemoryDatabase();
     const { project, revision, store } = await createActiveProjectConfiguration(
@@ -415,7 +456,7 @@ describe("Slack Phase 1 trigger provider", () => {
       triggerContext: rootMatch.triggerContext,
     });
     assert.deepEqual(rootContext, {
-      slack: { thread: { status: "not_applicable", messages: [] } },
+      slack: { requester: { id: "U1" }, thread: { status: "not_applicable", messages: [] } },
     });
     assert.deepEqual(client.threadReads, ["1700000000.000001"]);
   });
@@ -486,6 +527,7 @@ describe("Slack Phase 1 trigger provider", () => {
 
     assert.deepEqual(context, {
       slack: {
+        requester: { id: "U1" },
         thread: {
           status: "available",
           messages: [
@@ -551,7 +593,7 @@ describe("Slack Phase 1 trigger provider", () => {
       triggerContext: emptyMatch.triggerContext,
     });
     assert.deepEqual(emptyContext, {
-      slack: { thread: { status: "available", messages: [] } },
+      slack: { requester: { id: "U1" }, thread: { status: "available", messages: [] } },
     });
 
     const match = (await provider.match(external(project.id, revision.id)))[0];
@@ -570,7 +612,7 @@ describe("Slack Phase 1 trigger provider", () => {
       triggerContext: match.triggerContext,
     });
     assert.deepEqual(context, {
-      slack: { thread: { status: "unavailable", messages: [] } },
+      slack: { requester: { id: "U1" }, thread: { status: "unavailable", messages: [] } },
     });
   });
 
@@ -623,7 +665,14 @@ describe("Slack Phase 1 trigger provider", () => {
     );
     const client = createSlackBotClient({
       tokenForWorkspace: () => Promise.resolve("xoxb-secret"),
-      fetch: () => {
+      fetch: (input) => {
+        let url: string;
+        if (typeof input === "string") url = input;
+        else if (input instanceof URL) url = input.href;
+        else url = input.url;
+        if (url.includes("/users.info")) {
+          return Promise.resolve(Response.json({ ok: true, user: { name: "operator" } }));
+        }
         requests += 1;
         if (requests > maximumPageCount) {
           throw new Error("Slack history traversal exceeded its request ceiling");
@@ -863,6 +912,7 @@ class RecordingSlackClient implements SlackBotClient {
   }> = [];
   threadReads: string[] = [];
   userLookups: string[] = [];
+  profileLookups: string[] = [];
   private readonly threadMessages: SlackThreadMessage[];
 
   constructor(
@@ -873,6 +923,12 @@ class RecordingSlackClient implements SlackBotClient {
       failThreadRead?: boolean;
       threadComplete?: boolean;
       username?: string;
+      profile?: {
+        username: string;
+        displayName?: string;
+        realName?: string;
+        email?: string;
+      };
     } = {},
   ) {
     this.threadMessages = options.threadMessages ?? [];
@@ -899,6 +955,10 @@ class RecordingSlackClient implements SlackBotClient {
   lookupUserName(input: { userId: string }): Promise<string | undefined> {
     this.userLookups.push(input.userId);
     return Promise.resolve(this.options.username);
+  }
+  lookupUserProfile(input: { userId: string }) {
+    this.profileLookups.push(input.userId);
+    return Promise.resolve(this.options.profile);
   }
   readThreadMessages(input: {
     organizationId: string;

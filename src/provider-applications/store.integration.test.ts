@@ -263,6 +263,7 @@ async function exerciseSlackAtomicTransition(bundle: DatabaseRuntimeBundle) {
         "groups:history",
         "reactions:write",
         "users:read",
+        "users:read.email",
       ],
     },
   });

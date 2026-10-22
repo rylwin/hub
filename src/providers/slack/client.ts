@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SLACK_REQUIRED_BOT_SCOPES = [
+const SLACK_ROUTING_BOT_SCOPES = [
   "app_mentions:read",
   "channels:history",
   "chat:write",
@@ -9,6 +9,8 @@ export const SLACK_REQUIRED_BOT_SCOPES = [
   "reactions:write",
   "users:read",
 ] as const;
+
+export const SLACK_REQUIRED_BOT_SCOPES = [...SLACK_ROUTING_BOT_SCOPES, "users:read.email"] as const;
 
 const SlackOAuthResponseSchema = z
   .object({
@@ -40,8 +42,16 @@ export interface SlackInstallation {
 }
 
 export function hasRequiredSlackScopes(scopes: readonly string[]): boolean {
+  return hasSlackScopes(scopes, SLACK_REQUIRED_BOT_SCOPES);
+}
+
+export function hasSlackRoutingScopes(scopes: readonly string[]): boolean {
+  return hasSlackScopes(scopes, SLACK_ROUTING_BOT_SCOPES);
+}
+
+function hasSlackScopes(scopes: readonly string[], required: readonly string[]): boolean {
   const granted = new Set(scopes);
-  return SLACK_REQUIRED_BOT_SCOPES.every((scope) => granted.has(scope));
+  return required.every((scope) => granted.has(scope));
 }
 
 export interface SlackConnectionClient {

@@ -389,6 +389,7 @@ class BrowserSlackConnections implements SlackConnectionClient {
               "groups:history",
               "reactions:write",
               "users:read",
+              "users:read.email",
             ],
     });
   }

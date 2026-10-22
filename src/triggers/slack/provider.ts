@@ -11,7 +11,7 @@ import {
   type TriggerProviderMatch,
   type TriggerProviderReactionState,
 } from "../index.js";
-import type { SlackBotClient, SlackThreadMessage } from "./client.js";
+import type { SlackBotClient, SlackThreadMessage, SlackUserProfile } from "./client.js";
 import { NormalizedSlackMentionEventSchema, type NormalizedSlackMentionEvent } from "./events.js";
 import {
   matchSlackTriggers,
@@ -75,8 +75,17 @@ interface SlackContextPayload {
   messages: SlackMergeMessage[];
 }
 
+interface SlackRequesterContext {
+  id: string;
+  username?: string;
+  display_name?: string;
+  real_name?: string;
+  email?: string;
+}
+
 export interface SlackMaterializedContext {
   slack: {
+    requester: SlackRequesterContext;
     thread: SlackContextPayload;
   };
 }
@@ -202,12 +211,19 @@ export function createSlackTriggerProvider(options: {
       return matches.length === 0 ? "trigger_filters_rejected" : matches;
     },
     async materializeContext(launch): Promise<SlackMaterializedContext> {
-      const locator = launch.triggerContext.event.slack.trigger_thread_context;
+      const slack = launch.triggerContext.event.slack;
+      const requester = await materializeSlackRequester(
+        options.client,
+        launch.organizationId,
+        slack.team.id,
+        slack.trigger_message.author.id,
+      );
+      const locator = slack.trigger_thread_context;
       if (locator.status === "not_applicable") {
-        return { slack: { thread: { status: "not_applicable", messages: [] } } };
+        return { slack: { requester, thread: { status: "not_applicable", messages: [] } } };
       }
       if (options.client.readThreadMessages === undefined) {
-        return { slack: { thread: { status: "unavailable", messages: [] } } };
+        return { slack: { requester, thread: { status: "unavailable", messages: [] } } };
       }
       let history;
       try {
@@ -229,7 +245,7 @@ export function createSlackTriggerProvider(options: {
             },
           },
         );
-        return { slack: { thread: { status: "unavailable", messages: [] } } };
+        return { slack: { requester, thread: { status: "unavailable", messages: [] } } };
       }
       const messages = await Promise.all(
         history.messages.map(async (message) => ({
@@ -251,6 +267,7 @@ export function createSlackTriggerProvider(options: {
       );
       return {
         slack: {
+          requester,
           thread: {
             status: history.complete ? "available" : "incomplete",
             messages,
@@ -297,6 +314,36 @@ export function createSlackTriggerProvider(options: {
       }
       return reactionState;
     },
+  };
+}
+
+async function materializeSlackRequester(
+  client: SlackBotClient,
+  organizationId: string,
+  teamId: string,
+  userId: string,
+): Promise<SlackRequesterContext> {
+  if (client.lookupUserProfile === undefined) return { id: userId };
+  try {
+    const profile = await client.lookupUserProfile({ organizationId, teamId, userId });
+    return profile === undefined ? { id: userId } : requesterContext(userId, profile);
+  } catch (error) {
+    reportFailure(
+      error,
+      { operation: "slack.user.profile", component: "triggers", provider: "slack" },
+      { diagnostic: { teamId, userId } },
+    );
+    return { id: userId };
+  }
+}
+
+function requesterContext(userId: string, profile: SlackUserProfile): SlackRequesterContext {
+  return {
+    id: userId,
+    username: profile.username,
+    ...(profile.displayName === undefined ? {} : { display_name: profile.displayName }),
+    ...(profile.realName === undefined ? {} : { real_name: profile.realName }),
+    ...(profile.email === undefined ? {} : { email: profile.email }),
   };
 }
 

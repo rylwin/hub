@@ -28,6 +28,7 @@ import type { ProviderConnectionRegistration, ProviderRegistration } from "../re
 import {
   createSlackConnectionClient,
   hasRequiredSlackScopes,
+  hasSlackRoutingScopes,
   type SlackConnectionClient,
   type SlackInstallation,
   SlackBotVerificationError,
@@ -203,7 +204,7 @@ async function findSlackBindingForOrganization(
   teamId: string,
 ): Promise<SlackConnectionRecord | undefined> {
   const binding = await database.findSlackConnectionForOrganization(organizationId, teamId);
-  return binding?.organizationId === organizationId && hasRequiredSlackScopes(binding.scopes)
+  return binding?.organizationId === organizationId && hasSlackRoutingScopes(binding.scopes)
     ? binding
     : undefined;
 }

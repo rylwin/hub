@@ -23,6 +23,35 @@ describe("Slack Web API client", () => {
     });
   });
 
+  it("looks up an authored Slack profile with the workspace bot token", async () => {
+    const client = createSlackBotClient({
+      tokenForWorkspace: () => Promise.resolve("xoxb-secret"),
+      fetch: async () =>
+        Response.json({
+          ok: true,
+          user: {
+            name: "operator",
+            real_name: "Op Erator",
+            profile: {
+              display_name: "Operator",
+              real_name: "Op Erator",
+              email: "operator@example.com",
+            },
+          },
+        }),
+    });
+
+    assert.deepEqual(
+      await client.lookupUserProfile?.({ organizationId: "org-1", teamId: "T1", userId: "U1" }),
+      {
+        username: "operator",
+        displayName: "Operator",
+        realName: "Op Erator",
+        email: "operator@example.com",
+      },
+    );
+  });
+
   it("resolves the workspace token internally and checks Slack's ok field", async () => {
     const requests: Array<{ url: string; authorization: string | null; body: unknown }> = [];
     const authorities: Array<[string, string]> = [];
