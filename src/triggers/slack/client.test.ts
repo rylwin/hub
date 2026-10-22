@@ -18,8 +18,8 @@ describe("Slack Web API client", () => {
       "operator",
     );
     assert.deepEqual(request, {
-      url: "https://slack.com/api/users.info",
-      method: "POST",
+      url: "https://slack.com/api/users.info?user=U1",
+      method: "GET",
     });
   });
 

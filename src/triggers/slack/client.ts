@@ -297,7 +297,7 @@ export function createSlackBotClient(options: {
     userId: string;
   }): Promise<z.infer<typeof SlackUserInfoSchema>["user"]> {
     const result = SlackUserInfoSchema.parse(
-      await callJson(input.organizationId, input.teamId, "users.info", { user: input.userId }),
+      await queryJson(input.organizationId, input.teamId, "users.info", { user: input.userId }),
     );
     if (!result.ok) throw new Error(`Slack API ${result.error ?? "unknown_error"}`);
     return result.user;
